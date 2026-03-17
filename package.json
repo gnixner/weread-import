@@ -1,0 +1,17 @@
+{
+  "name": "weread-import",
+  "version": "0.1.0",
+  "description": "Export WeRead highlights and notes into Markdown files, including Obsidian-friendly output.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "weread-import": "./src/weread-import.mjs"
+  },
+  "scripts": {
+    "import": "node ./src/weread-import.mjs",
+    "check": "node --check ./src/weread-import.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.53.0"
+  }
+}
