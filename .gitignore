@@ -1,1 +1,4 @@
 node_modules/
+.env
+out/
+.weread-import-state.json
