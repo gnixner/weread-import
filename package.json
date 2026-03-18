@@ -7,6 +7,22 @@
   "bin": {
     "weread-import": "./src/weread-import.mjs"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gnixner/weread-import.git"
+  },
+  "homepage": "https://github.com/gnixner/weread-import#readme",
+  "bugs": {
+    "url": "https://github.com/gnixner/weread-import/issues"
+  },
+  "keywords": [
+    "weread",
+    "wechat-reading",
+    "markdown",
+    "obsidian",
+    "cli",
+    "nodejs"
+  ],
   "scripts": {
     "import": "node ./src/weread-import.mjs",
     "check": "node --check ./src/weread-import.mjs"
