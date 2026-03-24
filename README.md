@@ -52,6 +52,12 @@ node ./src/cli.mjs --book "自卑与超越" --mode api --cookie-from browser --o
 
 ## 配置
 
+所有环境变量均可参考 `env.example`，复制为 `.env` 后按需修改：
+
+```bash
+cp env.example .env
+```
+
 ### 输出目录
 
 默认输出到工作目录下的 `./out/weread`。可通过环境变量覆盖：

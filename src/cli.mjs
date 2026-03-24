@@ -184,7 +184,9 @@ async function importViaDom(args) {
     }
     console.log(`Done. Imported ${results.length} book(s) by DOM.`);
   } finally {
-    await browser.close();
+    if (typeof browser.disconnect === 'function') {
+      browser.disconnect();
+    }
   }
 }
 
@@ -196,7 +198,6 @@ async function main() {
     try {
       return await importViaApi(args);
     } catch (err) {
-      if (err instanceof WereadAuthError) throw err;
       console.warn(`[warn] API 模式失败，回退到 DOM 模式: ${err.message}`);
     }
   }

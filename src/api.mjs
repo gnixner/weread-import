@@ -2,16 +2,26 @@ import { cleanText } from './utils.mjs';
 import { WereadApiError, WereadAuthError } from './errors.mjs';
 
 const WEREAD_BASE = 'https://weread.qq.com';
+const USER_AGENT = process.env.WEREAD_USER_AGENT || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36';
 
-export async function wereadFetchJson(url, cookie, extraHeaders = {}) {
-  const res = await fetch(url, {
-    headers: {
-      'user-agent': 'Mozilla/5.0',
-      accept: 'application/json, text/plain, */*',
-      cookie,
-      ...extraHeaders,
-    },
-  });
+const AUTH_ERROR_CODES = [-1, -2, -100, -2010, -2012];
+
+function appendCacheBuster(url) {
+  const sep = url.includes('?') ? '&' : '?';
+  return `${url}${sep}_=${Date.now()}`;
+}
+
+export async function wereadFetchJson(url, cookie, { method = 'GET', body, extraHeaders = {} } = {}) {
+  const finalUrl = method === 'GET' ? appendCacheBuster(url) : url;
+  const headers = {
+    'user-agent': USER_AGENT,
+    'accept': 'application/json, text/plain, */*',
+    'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    cookie,
+    ...extraHeaders,
+  };
+  if (body) headers['content-type'] = 'application/json;charset=UTF-8';
+  const res = await fetch(finalUrl, { method, headers, body });
   const text = await res.text();
   let data;
   try {
@@ -20,12 +30,16 @@ export async function wereadFetchJson(url, cookie, extraHeaders = {}) {
     throw new WereadApiError(`响应非合法 JSON: ${url}\n${text.slice(0, 500)}`);
   }
   if (!res.ok) {
+    const code = data?.errcode ?? data?.errCode ?? 0;
+    if (AUTH_ERROR_CODES.includes(Number(code))) {
+      throw new WereadAuthError(`HTTP ${res.status} 错误: ${url}\n${text.slice(0, 500)}`);
+    }
     throw new WereadApiError(`HTTP ${res.status} 错误: ${url}\n${text.slice(0, 500)}`);
   }
   const businessErrCode = data?.errCode ?? data?.errcode ?? 0;
   const businessErrMsg = data?.errMsg ?? data?.errmsg ?? '';
   if (businessErrCode && Number(businessErrCode) !== 0) {
-    const isAuth = /login|auth|expire|token/i.test(businessErrMsg) || [-1, -2, -100].includes(Number(businessErrCode));
+    const isAuth = /login|auth|expire|token/i.test(businessErrMsg) || AUTH_ERROR_CODES.includes(Number(businessErrCode));
     const ErrClass = isAuth ? WereadAuthError : WereadApiError;
     throw new ErrClass(`业务错误 ${businessErrCode}: ${url}\n${businessErrMsg || text.slice(0, 500)}`);
   }

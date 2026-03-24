@@ -1,6 +1,6 @@
 {
   "name": "weread-import",
-  "version": "0.2.2",
+  "version": "0.2.4",
   "description": "Export WeRead highlights and notes into Markdown files, including Obsidian-friendly output.",
   "type": "module",
   "license": "MIT",
@@ -34,6 +34,7 @@
   "files": [
     "src/",
     "scripts/",
+    "env.example",
     "TEMPLATE.md",
     "README.md",
     "LICENSE"

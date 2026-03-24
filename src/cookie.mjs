@@ -10,7 +10,9 @@ export async function extractCookieFromBrowser(cdpUrl) {
     if (!valid.length) throw new Error('浏览器中未找到 weread.qq.com 的 cookie，请先在该浏览器中登录微信读书');
     return valid.map((c) => `${c.name}=${c.value}`).join('; ');
   } finally {
-    await browser.close();
+    if (typeof browser.disconnect === 'function') {
+      browser.disconnect();
+    }
   }
 }
 
