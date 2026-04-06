@@ -17,7 +17,6 @@ src/
   merge.mjs            ← 增量合并统计、已删除内容处理
   markdown-parser.mjs  ← 从现有 Markdown 提取结构化数据
   state.mjs            ← 同步状态文件读写
-  dom.mjs              ← DOM 模式（Playwright 浏览器抓取）
   errors.mjs           ← WereadAuthError / WereadApiError
   utils.mjs            ← sanitizeFileName / cleanText / yamlScalar
 ```
@@ -26,7 +25,7 @@ src/
 
 - **ESM only**：`"type": "module"`，所有文件使用 `.mjs` 扩展名
 - **唯一运行时依赖**：`playwright`（不使用 dotenv，环境变量由调用方负责）
-- **错误分类**：`WereadAuthError`（登录/鉴权问题）和 `WereadApiError`（其他 API 错误）；auto 模式仅对 `WereadApiError` 回退 DOM
+- **错误分类**：`WereadAuthError`（登录/鉴权问题）和 `WereadApiError`（其他 API 错误）
 - **测试**：使用 Node.js 内置 `node:test`，零额外依赖；运行 `npm test`
 - **Skill 入口**：`scripts/run.sh`，首次运行自动 `npm install --production`
 

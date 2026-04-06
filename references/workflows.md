@@ -46,7 +46,21 @@ bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser 
 WEREAD_TAGS="reading/weread,book" bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser --output "/path/to/Reading"
 ```
 
-## 5. 常见问题
+## 5. 定时同步
+
+适用场景：通过 cron 或 agent 定时任务自动同步全部书籍。
+
+```bash
+bash ./scripts/run.sh --all --mode api --cookie-from browser --output "/path/to/Reading"
+```
+
+注意事项：
+- 不加 `--force`，依赖增量机制跳过无变化的书籍
+- 必须使用 `--cookie-from browser`，不要硬编码 cookie
+- 前提是 Chrome CDP 运行中且已登录微信读书
+- 失败时直接报告错误，不要重试或变更参数
+
+## 6. 常见问题
 
 ### 登录过期 / 业务错误
 

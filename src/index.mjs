@@ -1,5 +1,5 @@
 export { WereadAuthError, WereadApiError } from './errors.mjs';
-export { sanitizeFileName, cleanText, yamlScalar, isGarbageContent } from './utils.mjs';
+export { sanitizeFileName, cleanText, yamlScalar } from './utils.mjs';
 export { wereadFetchJson, getNotebookBooks, getBookmarks, getReviews } from './api.mjs';
 export { extractCookieFromBrowser, getCookieForApi } from './cookie.mjs';
 export { buildBookmarkEntries, buildReviewEntries, groupByChapter, collectBookmarkIds, collectReviewIds, comparableBookmarkEntry, comparableReviewEntry } from './entries.mjs';

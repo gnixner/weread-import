@@ -23,8 +23,6 @@ Primary path:
 - `/web/book/bookmarklist`
 - `/web/review/list`
 
-DOM / CDP mode is fallback-only.
-
 ### Output is filesystem-first
 
 The tool writes to a user-provided directory such as:

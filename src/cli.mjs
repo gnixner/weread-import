@@ -2,8 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
-import { chromium } from 'playwright';
-import { WereadAuthError, WereadApiError } from './errors.mjs';
+import { WereadAuthError } from './errors.mjs';
 import { sanitizeFileName } from './utils.mjs';
 import { getNotebookBooks, getBookmarks, getReviews } from './api.mjs';
 import { getCookieForApi, extractCookieFromBrowser } from './cookie.mjs';
@@ -12,7 +11,6 @@ import { buildMarkdownFromApi, writeBook } from './render.mjs';
 import { extractComparableMapsFromMarkdown, extractIds } from './markdown-parser.mjs';
 import { computeMergeStats } from './merge.mjs';
 import { loadState, saveState } from './state.mjs';
-import { ensureShelfPage, getShelfBooksByDom, importOneBookByDom } from './dom.mjs';
 
 const DEFAULT_OUTPUT = process.env.WEREAD_OUTPUT || path.resolve(process.cwd(), 'out', 'weread');
 const DEFAULT_CDP = process.env.WEREAD_CDP_URL || 'http://127.0.0.1:9222';
@@ -31,7 +29,7 @@ function parseArgs(argv) {
     tags: DEFAULT_TAGS,
     cookie: process.env.WEREAD_COOKIE || null,
     cookieFrom: 'manual',
-    mode: process.env.WEREAD_IMPORT_MODE || 'auto',
+    mode: process.env.WEREAD_IMPORT_MODE || 'api',
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -46,7 +44,7 @@ function parseArgs(argv) {
     else if (arg === '--tags') args.tags = String(argv[++i] || '').split(',').map((x) => x.trim()).filter(Boolean);
     else if (arg === '--cookie') args.cookie = argv[++i] || null;
     else if (arg === '--cookie-from') args.cookieFrom = argv[++i] || 'manual';
-    else if (arg === '--mode') args.mode = argv[++i] || 'auto';
+    else if (arg === '--mode') args.mode = argv[++i] || 'api';
   }
   if (!args.all && !args.book && !args.bookId) throw new Error('请指定 --all、--book <标题> 或 --book-id <ID>');
   return args;
@@ -165,59 +163,28 @@ async function importViaApi(args) {
   console.log(`Done. Imported ${results.length} book(s) by API. Skipped ${skipped} unchanged book(s).`);
 }
 
-async function importViaDom(args) {
-  const browser = await chromium.connectOverCDP(args.cdp);
-  try {
-    const context = browser.contexts()[0];
-    if (!context) throw new Error('无可用浏览器上下文，请确认已启动带远程调试的 Chrome');
-    const page = context.pages()[0] || await context.newPage();
-    await ensureShelfPage(page);
-    let books = await getShelfBooksByDom(page);
-    if (args.book) books = books.filter((b) => b.title.includes(args.book));
-    if (!books.length) throw new Error(args.book ? `书架中未找到匹配「${args.book}」的书籍` : '书架为空，没有可导入的书籍');
-    if (args.limit) books = books.slice(0, args.limit);
-    const results = [];
-    for (const book of books) {
-      const res = await importOneBookByDom(context, book, args.output);
-      results.push(res);
-      console.log(`Imported [dom]: ${res.title} -> ${res.filePath} (${res.merged ? 'merged' : 'new'})`);
-    }
-    console.log(`Done. Imported ${results.length} book(s) by DOM.`);
-  } finally {
-    if (typeof browser.disconnect === 'function') {
-      browser.disconnect();
-    }
-  }
-}
-
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  if (args.mode === 'api') return importViaApi(args);
-  if (args.mode === 'dom') return importViaDom(args);
-  // auto mode
-  if (args.cookie || args.cookieFrom === 'browser') {
-    try {
-      return await importViaApi(args);
-    } catch (err) {
-      if (err instanceof WereadAuthError) {
-        if (args.cookieFrom === 'browser') {
-          console.warn('[warn] API cookie 已过期，正在从浏览器刷新...');
-          try {
-            args.cookie = await extractCookieFromBrowser(args.cdp);
-            return await importViaApi(args);
-          } catch (retryErr) {
-            if (retryErr instanceof WereadAuthError) {
-              throw new Error('浏览器中的微信读书登录已过期，请在 Chrome 中重新登录后重试');
-            }
-            throw retryErr;
-          }
+  try {
+    return await importViaApi(args);
+  } catch (err) {
+    if (err instanceof WereadAuthError && args.cookieFrom === 'browser') {
+      console.warn('[warn] API cookie 已过期，正在从浏览器刷新...');
+      try {
+        args.cookie = await extractCookieFromBrowser(args.cdp);
+        return await importViaApi(args);
+      } catch (retryErr) {
+        if (retryErr instanceof WereadAuthError) {
+          throw new Error('浏览器中的微信读书登录已过期，请在 Chrome 中重新登录后重试');
         }
-        throw new Error('cookie 已过期，请更新 WEREAD_COOKIE 或使用 --cookie-from browser');
+        throw retryErr;
       }
-      console.warn(`[warn] API 模式失败，回退到 DOM 模式: ${err.message}`);
     }
+    if (err instanceof WereadAuthError) {
+      throw new Error('cookie 已过期，请更新 WEREAD_COOKIE 或使用 --cookie-from browser');
+    }
+    throw err;
   }
-  return importViaDom(args);
 }
 
 main().catch((err) => {
