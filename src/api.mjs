@@ -30,8 +30,8 @@ export async function wereadFetchJson(url, cookie, { method = 'GET', body, extra
     throw new WereadApiError(`响应非合法 JSON: ${url}\n${text.slice(0, 500)}`);
   }
   if (!res.ok) {
-    const code = data?.errcode ?? data?.errCode ?? 0;
-    if (AUTH_ERROR_CODES.includes(Number(code))) {
+    const code = data?.errcode ?? data?.errCode ?? data?.data?.errcode ?? data?.data?.errCode ?? 0;
+    if (AUTH_ERROR_CODES.includes(Number(code)) || res.status === 401) {
       throw new WereadAuthError(`HTTP ${res.status} 错误: ${url}\n${text.slice(0, 500)}`);
     }
     throw new WereadApiError(`HTTP ${res.status} 错误: ${url}\n${text.slice(0, 500)}`);

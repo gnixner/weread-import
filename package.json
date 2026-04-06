@@ -34,7 +34,7 @@
   "files": [
     "src/",
     "scripts/",
-    "env.example",
+    "env.example.md",
     "TEMPLATE.md",
     "README.md",
     "LICENSE"

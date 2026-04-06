@@ -1,4 +1,4 @@
-import { sanitizeFileName, cleanText } from './utils.mjs';
+import { sanitizeFileName, cleanText, isGarbageContent } from './utils.mjs';
 import { buildFrontmatter, writeBook } from './render.mjs';
 
 export async function ensureShelfPage(page) {
@@ -43,8 +43,10 @@ export async function extractBookNotesByDom(page) {
 }
 
 export function buildMarkdownFromDom({ title, copied, panelText }) {
-  const cleanTitle = sanitizeFileName(title || '未命名书籍');
+  const rawTitle = String(title || '未命名书籍').replace(/\s*-\s*[^-]+-\s*微信读书\s*$/, '');
+  const cleanTitle = sanitizeFileName(rawTitle);
   const source = cleanText(copied || panelText || '');
+  if (!source || isGarbageContent(source)) return null;
   const frontmatter = buildFrontmatter({
     title: cleanTitle,
     author: '未知',
@@ -63,7 +65,12 @@ export async function importOneBookByDom(context, book, outputDir) {
     await openNotesPanel(page);
     const result = await extractBookNotesByDom(page);
     if (!result.ok) throw new Error(result.error || `DOM 提取失败: ${book.title}`);
-    const writeResult = await writeBook(outputDir, book.title || result.title, buildMarkdownFromDom(result));
+    const md = buildMarkdownFromDom(result);
+    if (!md) {
+      console.warn(`[warn] 跳过「${book.title}」: DOM 提取内容为空或无效`);
+      return { title: book.title, filePath: null, merged: false, mode: 'dom', skipped: true };
+    }
+    const writeResult = await writeBook(outputDir, book.title || result.title, md);
     return { title: book.title, filePath: writeResult.filePath, merged: false, mode: 'dom' };
   } finally {
     await page.close();

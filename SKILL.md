@@ -9,7 +9,7 @@ description: Export WeRead highlights and notes into Markdown files, usually int
 
 ## 默认策略
 
-1. 优先使用 `--mode auto`，API 失败（含鉴权错误）时自动回退 DOM。
+1. 优先使用 `--mode auto`，API 鉴权失败时自动从浏览器刷新 cookie 重试，非鉴权错误回退 DOM。
 2. 有 Chrome 远程调试会话时，优先使用 `--cookie-from browser`。
 3. 无浏览器时，通过环境变量 `WEREAD_COOKIE` 提供 Cookie。
 4. 修改模板、合并逻辑或 frontmatter 后，先输出到临时目录验证。
@@ -53,7 +53,8 @@ bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser 
 - 首次使用 `open-chrome-debug.sh` 时会从默认 Chrome Profile 同步登录态，也可通过 `SYNC_PROFILE=1` 强制重新同步。
 - 浏览器 cookie 提取使用 `disconnect()` 而非 `close()`，不会关闭用户的 Chrome。
 - API 请求自动附加时间戳防缓存，减少因 CDN 缓存导致的鉴权失败。
-- auto 模式下，API 鉴权失败会自动回退 DOM 模式，不再直接报错。
+- auto 模式下，API 鉴权失败会自动从浏览器刷新 cookie 重试；无浏览器时直接报错，不回退 DOM 产生垃圾。
+- DOM 模式写文件前会校验内容有效性，垃圾内容（cookie 字符串、UI 噪音）会被跳过。
 - 合并统计支持新增 / 更新 / 保留 / 删除四种分类。
 - 被删除的条目会归档到 `## 已删除`，而非直接丢弃。
 - 元信息由 YAML frontmatter 承载，正文中不重复。
@@ -61,7 +62,7 @@ bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser 
 
 ## 环境变量
 
-参见 `env.example`。
+参见 `env.example.md`。
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
@@ -73,6 +74,8 @@ bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser 
 | `WEREAD_USER_AGENT` | 自定义 UA | Chrome 146 |
 
 ## 资源
+
+- GitHub: https://github.com/gnixner/weread-import
 
 ### scripts/
 - `scripts/run.sh`：Skill 执行入口（首次自动安装依赖，自动启动 Chrome CDP）

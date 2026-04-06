@@ -52,10 +52,10 @@ node ./src/cli.mjs --book "自卑与超越" --mode api --cookie-from browser --o
 
 ## 配置
 
-所有环境变量均可参考 `env.example`，复制为 `.env` 后按需修改：
+所有环境变量均可参考 `env.example.md`，复制为 `.env` 后按需修改：
 
 ```bash
-cp env.example .env
+cp env.example.md .env
 ```
 
 ### 输出目录

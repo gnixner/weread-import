@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 import { WereadAuthError, WereadApiError } from './errors.mjs';
 import { sanitizeFileName } from './utils.mjs';
 import { getNotebookBooks, getBookmarks, getReviews } from './api.mjs';
-import { getCookieForApi } from './cookie.mjs';
+import { getCookieForApi, extractCookieFromBrowser } from './cookie.mjs';
 import { buildBookmarkEntries, buildReviewEntries, comparableBookmarkEntry, comparableReviewEntry, collectBookmarkIds, collectReviewIds } from './entries.mjs';
 import { buildMarkdownFromApi, writeBook } from './render.mjs';
 import { extractComparableMapsFromMarkdown, extractIds } from './markdown-parser.mjs';
@@ -194,10 +194,26 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.mode === 'api') return importViaApi(args);
   if (args.mode === 'dom') return importViaDom(args);
+  // auto mode
   if (args.cookie || args.cookieFrom === 'browser') {
     try {
       return await importViaApi(args);
     } catch (err) {
+      if (err instanceof WereadAuthError) {
+        if (args.cookieFrom === 'browser') {
+          console.warn('[warn] API cookie 已过期，正在从浏览器刷新...');
+          try {
+            args.cookie = await extractCookieFromBrowser(args.cdp);
+            return await importViaApi(args);
+          } catch (retryErr) {
+            if (retryErr instanceof WereadAuthError) {
+              throw new Error('浏览器中的微信读书登录已过期，请在 Chrome 中重新登录后重试');
+            }
+            throw retryErr;
+          }
+        }
+        throw new Error('cookie 已过期，请更新 WEREAD_COOKIE 或使用 --cookie-from browser');
+      }
       console.warn(`[warn] API 模式失败，回退到 DOM 模式: ${err.message}`);
     }
   }
