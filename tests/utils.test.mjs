@@ -78,6 +78,8 @@ describe('isGarbageContent', () => {
     assert.equal(isGarbageContent('我的笔记 复制全部笔记'), true);
     assert.equal(isGarbageContent('推荐值 91.1%'), true);
     assert.equal(isGarbageContent('会员卡可读 升级付费'), true);
+    assert.equal(isGarbageContent('我的笔记复制划线写想法查询书友想法\n评论\n0\n暂无评论'), true);
+    assert.equal(isGarbageContent('写想法公开发 表'), true);
   });
 
   it('detects empty or too-short content', () => {
