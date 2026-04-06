@@ -9,12 +9,14 @@ description: Export WeRead highlights and notes into Markdown files, usually int
 
 ## 默认策略
 
-1. 优先使用 `--mode auto`，API 鉴权失败时自动从浏览器刷新 cookie 重试，非鉴权错误回退 DOM。
-2. 有 Chrome 远程调试会话时，优先使用 `--cookie-from browser`。
+1. 优先使用 `--mode api`，API 数据完整（author、bookId、highlightCount 等元数据齐全）。
+2. 有 Chrome 远程调试会话时，优先使用 `--cookie-from browser`，cookie 过期自动刷新。
 3. 无浏览器时，通过环境变量 `WEREAD_COOKIE` 提供 Cookie。
-4. 修改模板、合并逻辑或 frontmatter 后，先输出到临时目录验证。
-5. 验证通过后，再对真实目录执行。
-6. 目的是重新渲染或验证时，加上 `--force` 跳过增量检查。
+4. 定时任务 / 自动执行场景禁止使用 DOM 模式 — DOM 输出缺少结构化元数据、依赖页面结构易碎、速度慢、有垃圾风险。
+5. DOM 模式仅作手动兜底：某本书 API 无法获取时，用户主动指定 `--mode dom`。
+6. 修改模板、合并逻辑或 frontmatter 后，先输出到临时目录验证。
+7. 验证通过后，再对真实目录执行。
+8. 目的是重新渲染或验证时，加上 `--force` 跳过增量检查。
 
 详细命令模板见 `references/workflows.md`。
 
