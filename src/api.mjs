@@ -63,11 +63,18 @@ export async function getNotebookBooks(cookie) {
 export async function getBookmarks(cookie, bookId) {
   const data = await wereadFetchJson(`${WEREAD_BASE}/web/book/bookmarklist?bookId=${encodeURIComponent(bookId)}`, cookie);
   const chapters = Array.isArray(data.chapters) ? data.chapters : [];
-  const chapterMap = new Map(chapters.map((item) => [String(item.chapterUid), cleanText(item.title || '')]));
+  const chapterMap = new Map(chapters.map((item) => [
+    String(item.chapterUid),
+    {
+      chapterName: cleanText(item.title || ''),
+      chapterIdx: item.chapterIdx,
+    },
+  ]));
   const updated = Array.isArray(data.updated) ? data.updated : [];
   return updated.map((item) => ({
     ...item,
-    chapterName: item.chapterName || item.chapterTitle || chapterMap.get(String(item.chapterUid)) || '',
+    chapterName: item.chapterName || item.chapterTitle || chapterMap.get(String(item.chapterUid))?.chapterName || '',
+    chapterIdx: item.chapterIdx ?? chapterMap.get(String(item.chapterUid))?.chapterIdx ?? null,
   }));
 }
 

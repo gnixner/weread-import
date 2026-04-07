@@ -1,4 +1,5 @@
 import { parseEntryGroups, parseMetadataComment } from './markdown-parser.mjs';
+import { compareChapterGroups, compareEntriesBySort, parseBookmarkIdPosition, parseRangePosition, toFiniteNumber } from './sort.mjs';
 
 export function computeMergeStats(prevIds, nextIds, prevEntries = null, nextEntries = null) {
   const prev = new Set(prevIds);
@@ -33,7 +34,9 @@ export function normalizeDeletedContent(text) {
     .replace(/^###\s+(?!划线\s*$|想法\s*$)(.+)$/gm, '#### $1')
     .replace(/^- time:\s*(.*)$/gm, '<!-- time: $1 -->')
     .replace(/^- chapterUid:\s*(.*)$/gm, '<!-- chapterUid: $1 -->')
-    .replace(/(<!-- (?:bookmarkId|reviewId): [^>]+ -->)\n\n(<!-- (?:time|chapterUid): [^>]+ -->)/g, '$1\n$2')
+    .replace(/^- chapterIdx:\s*(.*)$/gm, '<!-- chapterIdx: $1 -->')
+    .replace(/^- range:\s*(.*)$/gm, '<!-- range: $1 -->')
+    .replace(/(<!-- (?:bookmarkId|reviewId): [^>]+ -->)\n\n(<!-- (?:time|chapterUid|chapterIdx|range): [^>]+ -->)/g, '$1\n$2')
     .trim();
 }
 
@@ -53,7 +56,33 @@ export function pickDeletedEntries(sectionMarkdown, idKind, deletedIds) {
   }).join('\n\n');
 }
 
-export function mergeDeletedContent(existingDeleted, newlyDeleted, idKind = 'bookmarkId') {
+function createDeletedEntry(itemId, body, idKind, chapterOrderMap) {
+  const time = parseMetadataComment(body, 'time');
+  const chapterUid = parseMetadataComment(body, 'chapterUid');
+  const metadataRange = parseMetadataComment(body, 'range');
+  const bookmarkPosition = idKind === 'bookmarkId' ? parseBookmarkIdPosition(itemId) : null;
+  const rangePosition = parseRangePosition(metadataRange);
+  const position = rangePosition || bookmarkPosition;
+
+  return {
+    id: itemId,
+    time,
+    sortTime: time ? Date.parse(time) || 0 : 0,
+    chapterUid,
+    sortChapterIndex: toFiniteNumber(parseMetadataComment(body, 'chapterIdx')) ?? toFiniteNumber(chapterOrderMap.get(String(chapterUid))),
+    sortPositionStart: position ? position.start : null,
+    sortPositionEnd: position ? position.end : null,
+    range: metadataRange || '',
+    body: body
+      .replace(/<!-- time: [^>]+ -->/g, '')
+      .replace(/<!-- chapterUid: [^>]+ -->/g, '')
+      .replace(/<!-- chapterIdx: [^>]+ -->/g, '')
+      .replace(/<!-- range: [^>]+ -->/g, '')
+      .trim(),
+  };
+}
+
+export function mergeDeletedContent(existingDeleted, newlyDeleted, idKind = 'bookmarkId', chapterOrderMap = new Map()) {
   const mergedText = [normalizeDeletedContent(existingDeleted), normalizeDeletedContent(newlyDeleted)].filter(Boolean).join('\n\n');
   if (!mergedText) return '';
 
@@ -70,36 +99,47 @@ export function mergeDeletedContent(existingDeleted, newlyDeleted, idKind = 'boo
     const items = [];
     let m;
     while ((m = entryRegex.exec(chapterBody))) {
-      const body = m[2].trim();
-      items.push({
-        id: m[1].trim(),
-        time: parseMetadataComment(body, 'time'),
-        chapterUid: parseMetadataComment(body, 'chapterUid'),
-        body: body
-          .replace(/<!-- time: [^>]+ -->/g, '')
-          .replace(/<!-- chapterUid: [^>]+ -->/g, '')
-          .trim(),
+      const item = createDeletedEntry(m[1].trim(), m[2].trim(), idKind, chapterOrderMap);
+      items.push(item);
+    }
+    if (items.length) {
+      groups.push({
+        chapterName,
+        chapterUid: items.find((item) => item.chapterUid)?.chapterUid || '',
+        sortChapterIndex: items.find((item) => toFiniteNumber(item.sortChapterIndex) !== null)?.sortChapterIndex ?? null,
+        items,
       });
     }
-    if (items.length) groups.push({ chapterName, items });
   }
 
   const mergedGroups = new Map();
   for (const group of groups) {
-    if (!mergedGroups.has(group.chapterName)) mergedGroups.set(group.chapterName, new Map());
-    const itemMap = mergedGroups.get(group.chapterName);
+    const groupKey = `${group.chapterUid}__${group.chapterName}`;
+    if (!mergedGroups.has(groupKey)) {
+      mergedGroups.set(groupKey, {
+        chapterName: group.chapterName,
+        chapterUid: group.chapterUid,
+        sortChapterIndex: group.sortChapterIndex,
+        itemMap: new Map(),
+      });
+    }
+    const mergedGroup = mergedGroups.get(groupKey);
+    if (toFiniteNumber(mergedGroup.sortChapterIndex) === null) mergedGroup.sortChapterIndex = group.sortChapterIndex;
+    const itemMap = mergedGroup.itemMap;
     for (const item of group.items) if (!itemMap.has(item.id)) itemMap.set(item.id, item);
   }
 
-  return Array.from(mergedGroups.entries()).map(([chapterName, itemMap]) => {
-    const body = Array.from(itemMap.entries()).map(([id, item]) => {
-      const lines = [`<!-- ${idKind}: ${id} -->`];
+  return Array.from(mergedGroups.values()).sort(compareChapterGroups).map((group) => {
+    const body = Array.from(group.itemMap.values()).sort(compareEntriesBySort).map((item) => {
+      const lines = [`<!-- ${idKind}: ${item.id} -->`];
       if (item.time) lines.push(`<!-- time: ${item.time} -->`);
       if (item.chapterUid) lines.push(`<!-- chapterUid: ${item.chapterUid} -->`);
+      if (toFiniteNumber(item.sortChapterIndex) !== null) lines.push(`<!-- chapterIdx: ${item.sortChapterIndex} -->`);
+      if (item.range) lines.push(`<!-- range: ${item.range} -->`);
       if (item.body) lines.push('', item.body);
       return lines.join('\n');
     }).join('\n\n');
-    return `#### ${chapterName}\n\n${body}`;
+    return `#### ${group.chapterName}\n\n${body}`;
   }).join('\n\n');
 }
 

@@ -77,6 +77,83 @@ describe('mergeDeletedContent', () => {
     const matches = result.match(/<!-- bookmarkId: abc -->/g);
     assert.equal(matches.length, 1);
   });
+
+  it('sorts deleted bookmark chapters and items with metadata', () => {
+    const existing = `#### 第二章
+
+<!-- bookmarkId: b2 -->
+<!-- time: 2024-01-02T00:00:00.000Z -->
+<!-- chapterUid: 2 -->
+<!-- chapterIdx: 2 -->
+<!-- range: 200-220 -->
+
+> second`;
+    const newly = `#### 第一章
+
+<!-- bookmarkId: b3 -->
+<!-- time: 2024-01-03T00:00:00.000Z -->
+<!-- chapterUid: 1 -->
+<!-- chapterIdx: 1 -->
+<!-- range: 300-320 -->
+
+> later
+
+<!-- bookmarkId: b1 -->
+<!-- time: 2024-01-01T00:00:00.000Z -->
+<!-- chapterUid: 1 -->
+<!-- chapterIdx: 1 -->
+<!-- range: 100-120 -->
+
+> earlier`;
+    const result = mergeDeletedContent(existing, newly, 'bookmarkId', new Map([['1', 1], ['2', 2]]));
+    assert.ok(result.indexOf('#### 第一章') < result.indexOf('#### 第二章'));
+    assert.ok(result.indexOf('<!-- bookmarkId: b1 -->') < result.indexOf('<!-- bookmarkId: b3 -->'));
+  });
+
+  it('keeps deleted chapters with the same name separate when chapterUid differs', () => {
+    const existing = `#### 章节名
+
+<!-- bookmarkId: b1 -->
+<!-- chapterUid: 1 -->
+<!-- chapterIdx: 1 -->
+<!-- range: 100-120 -->
+
+> first`;
+    const newly = `#### 章节名
+
+<!-- bookmarkId: b2 -->
+<!-- chapterUid: 2 -->
+<!-- chapterIdx: 2 -->
+<!-- range: 200-220 -->
+
+> second`;
+    const result = mergeDeletedContent(existing, newly, 'bookmarkId', new Map([['1', 1], ['2', 2]]));
+    const matches = result.match(/^#### 章节名$/gm);
+    assert.equal(matches.length, 2);
+  });
+
+  it('sorts deleted reviews by range when available', () => {
+    const existing = `#### 第一章
+
+<!-- reviewId: r2 -->
+<!-- time: 2024-01-02T00:00:00.000Z -->
+<!-- chapterUid: 1 -->
+<!-- chapterIdx: 1 -->
+<!-- range: 200-220 -->
+
+> **摘录**：second`;
+    const newly = `#### 第一章
+
+<!-- reviewId: r1 -->
+<!-- time: 2024-01-01T00:00:00.000Z -->
+<!-- chapterUid: 1 -->
+<!-- chapterIdx: 1 -->
+<!-- range: 100-120 -->
+
+> **摘录**：first`;
+    const result = mergeDeletedContent(existing, newly, 'reviewId', new Map([['1', 1]]));
+    assert.ok(result.indexOf('<!-- reviewId: r1 -->') < result.indexOf('<!-- reviewId: r2 -->'));
+  });
 });
 
 describe('buildDeletedSection', () => {

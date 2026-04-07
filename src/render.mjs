@@ -4,6 +4,7 @@ import { sanitizeFileName, cleanText, yamlScalar } from './utils.mjs';
 import { buildBookmarkEntries, buildReviewEntries, groupByChapter, collectBookmarkIds, collectReviewIds } from './entries.mjs';
 import { getTopLevelSection, extractIds } from './markdown-parser.mjs';
 import { pickDeletedEntries, mergeDeletedContent, buildDeletedSection } from './merge.mjs';
+import { toFiniteNumber } from './sort.mjs';
 
 const DEFAULT_TAGS = (process.env.WEREAD_TAGS || 'reading,weread').split(',').map((x) => x.trim()).filter(Boolean);
 
@@ -21,6 +22,17 @@ function parseDeletedSections(markdown) {
   return { bookmark, review };
 }
 
+function buildChapterOrderMap(entries) {
+  const orderMap = new Map();
+  for (const entry of entries) {
+    const chapterUid = String(entry.chapterUid ?? '').trim();
+    const chapterIndex = toFiniteNumber(entry.sortChapterIndex);
+    if (!chapterUid || chapterIndex === null || orderMap.has(chapterUid)) continue;
+    orderMap.set(chapterUid, chapterIndex);
+  }
+  return orderMap;
+}
+
 export function renderBookmarkSections(bookmarks) {
   const groups = groupByChapter(buildBookmarkEntries(bookmarks))
     .map((g) => ({ ...g, items: g.items.filter((e) => e.id && e.quote) }))
@@ -31,6 +43,8 @@ export function renderBookmarkSections(bookmarks) {
       `<!-- bookmarkId: ${e.id} -->`,
       `<!-- time: ${e.createdIso} -->`,
       `<!-- chapterUid: ${e.chapterUid} -->`,
+      ...(Number.isFinite(e.sortChapterIndex) ? [`<!-- chapterIdx: ${e.sortChapterIndex} -->`] : []),
+      ...(e.range ? [`<!-- range: ${e.range} -->`] : []),
       '',
       `> ${e.quote}`,
     ].join('\n')).join('\n\n');
@@ -49,6 +63,8 @@ export function renderReviewSections(reviews) {
         `<!-- reviewId: ${e.id} -->`,
         `<!-- time: ${e.createdIso} -->`,
         `<!-- chapterUid: ${e.chapterUid} -->`,
+        ...(Number.isFinite(e.sortChapterIndex) ? [`<!-- chapterIdx: ${e.sortChapterIndex} -->`] : []),
+        ...(e.range ? [`<!-- range: ${e.range} -->`] : []),
         '',
       ];
       if (e.quote) lines.push(`> **摘录**：${e.quote}`);
@@ -81,6 +97,10 @@ export function buildMarkdownFromApi(book, bookmarks, reviews, existingMarkdown 
   const title = sanitizeFileName(book.title);
   const author = cleanText(book.author || '');
   const noteUpdatedIso = book.sort ? new Date(book.sort * 1000).toISOString() : '';
+  const bookmarkEntries = buildBookmarkEntries(bookmarks);
+  const reviewEntries = buildReviewEntries(reviews);
+  const bookmarkChapterOrder = buildChapterOrderMap(bookmarkEntries);
+  const reviewChapterOrder = buildChapterOrderMap(reviewEntries);
   const bookmarkBlocks = renderBookmarkSections(bookmarks);
   const reviewBlocks = renderReviewSections(reviews);
 
@@ -97,8 +117,8 @@ export function buildMarkdownFromApi(book, bookmarks, reviews, existingMarkdown 
   const newlyDeletedBookmarks = pickDeletedEntries(previousBookmarkSection, 'bookmarkId', deletedBookmarkIds);
   const newlyDeletedReviews = pickDeletedEntries(previousReviewSection, 'reviewId', deletedReviewIds);
   const deletedBlocks = buildDeletedSection(
-    mergeDeletedContent(existingDeleted.bookmark, newlyDeletedBookmarks, 'bookmarkId'),
-    mergeDeletedContent(existingDeleted.review, newlyDeletedReviews, 'reviewId'),
+    mergeDeletedContent(existingDeleted.bookmark, newlyDeletedBookmarks, 'bookmarkId', bookmarkChapterOrder),
+    mergeDeletedContent(existingDeleted.review, newlyDeletedReviews, 'reviewId', reviewChapterOrder),
   );
 
   const sections = [
