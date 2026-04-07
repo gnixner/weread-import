@@ -1,5 +1,14 @@
 import { cleanText, reviewPayload } from './utils.mjs';
 
+export function parseBookmarkIdPosition(bookmarkId) {
+  const match = String(bookmarkId || '').match(/^[^_]+_\d+_(\d+)(?:-(\d+))?$/);
+  if (!match) return null;
+  const start = Number(match[1]);
+  const end = Number(match[2] || match[1]);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  return { start, end };
+}
+
 export function comparableBookmarkEntry(entry) {
   return {
     id: String(entry.id || ''),
@@ -22,14 +31,19 @@ export function comparableReviewEntry(entry) {
 }
 
 export function buildBookmarkEntries(bookmarks) {
-  return bookmarks.map((item) => ({
-    id: item.bookmarkId || '',
-    chapterUid: item.chapterUid ?? '',
-    chapterName: cleanText(item.chapterName || item.chapterTitle || '章节名'),
-    createdIso: item.createTime ? new Date(item.createTime * 1000).toISOString() : '',
-    sortTime: item.createTime || 0,
-    quote: cleanText(item.markText || ''),
-  }));
+  return bookmarks.map((item) => {
+    const position = parseBookmarkIdPosition(item.bookmarkId);
+    return {
+      id: item.bookmarkId || '',
+      chapterUid: item.chapterUid ?? '',
+      chapterName: cleanText(item.chapterName || item.chapterTitle || '章节名'),
+      createdIso: item.createTime ? new Date(item.createTime * 1000).toISOString() : '',
+      sortTime: item.createTime || 0,
+      sortPositionStart: position ? position.start : null,
+      sortPositionEnd: position ? position.end : null,
+      quote: cleanText(item.markText || ''),
+    };
+  });
 }
 
 export function buildReviewEntries(reviews) {
@@ -55,7 +69,20 @@ export function groupByChapter(entries) {
     map.get(key).items.push(e);
   }
   return Array.from(map.values())
-    .map((g) => ({ ...g, items: g.items.sort((a, b) => (a.sortTime || 0) - (b.sortTime || 0) || a.id.localeCompare(b.id)) }))
+    .map((g) => ({
+      ...g,
+      items: g.items.sort((a, b) => {
+        const hasPositionA = Number.isFinite(a.sortPositionStart);
+        const hasPositionB = Number.isFinite(b.sortPositionStart);
+        if (hasPositionA && hasPositionB) {
+          return a.sortPositionStart - b.sortPositionStart
+            || (a.sortPositionEnd || 0) - (b.sortPositionEnd || 0)
+            || (a.sortTime || 0) - (b.sortTime || 0)
+            || a.id.localeCompare(b.id);
+        }
+        return (a.sortTime || 0) - (b.sortTime || 0) || a.id.localeCompare(b.id);
+      }),
+    }))
     .sort((a, b) => String(a.chapterUid).localeCompare(String(b.chapterUid)) || a.chapterName.localeCompare(b.chapterName, 'zh-Hans-CN'));
 }
 

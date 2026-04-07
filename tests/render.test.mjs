@@ -57,6 +57,26 @@ describe('renderBookmarkSections', () => {
     assert.ok(result.includes('<!-- bookmarkId: b1 -->'));
     assert.ok(result.includes('> highlight text'));
   });
+
+  it('sorts bookmarks by position parsed from bookmarkId within a chapter', () => {
+    const bookmarks = [
+      { bookmarkId: '33628204_51_9261-9269', chapterUid: 51, chapterName: '第一章', createTime: 1700000000, markText: 'later in chapter' },
+      { bookmarkId: '33628204_51_1130-1204', chapterUid: 51, chapterName: '第一章', createTime: 1700000001, markText: 'earlier in chapter' },
+      { bookmarkId: '33628204_51_6409-6420', chapterUid: 51, chapterName: '第一章', createTime: 1700000002, markText: 'middle of chapter' },
+    ];
+    const result = renderBookmarkSections(bookmarks);
+    assert.ok(result.indexOf('earlier in chapter') < result.indexOf('middle of chapter'));
+    assert.ok(result.indexOf('middle of chapter') < result.indexOf('later in chapter'));
+  });
+
+  it('supports legacy bookmarkId values with a single position number', () => {
+    const bookmarks = [
+      { bookmarkId: '840236_21_392', chapterUid: 21, chapterName: '第一章', createTime: 1700000001, markText: 'single position' },
+      { bookmarkId: '840236_21_105-120', chapterUid: 21, chapterName: '第一章', createTime: 1700000000, markText: 'range position' },
+    ];
+    const result = renderBookmarkSections(bookmarks);
+    assert.ok(result.indexOf('range position') < result.indexOf('single position'));
+  });
 });
 
 describe('renderReviewSections', () => {
