@@ -151,6 +151,12 @@ WEREAD_TAGS="reading/weread,book"
 - 已有外部 Chrome CDP，并希望复用当前浏览器微信读书登录态：优先用 `browser-live`
 - 希望完全隔离，不影响主浏览器其他站点 web 登录：用 `browser-managed`
 
+升级影响：
+
+- 旧的 `--cookie-from browser` 仍可继续使用，但其语义现在等同于 `browser-managed`
+- 从旧版本升级到默认隔离模式后，首次运行 `browser-managed` 可能需要在独立窗口中重新登录一次微信读书
+- `browser-live` 不会自动启动浏览器；如果外部 CDP 未运行，会直接失败并提示改用 `browser-managed`
+
 ## 输出格式
 
 每本书导出为一个 Markdown 文件，结构如下：
@@ -232,7 +238,7 @@ node --test
 - 验证阶段一律输出到 `/tmp/...`
 - 不要直接写正式 Reading 目录
 - 至少覆盖 API 探针和一次完整导出
-- 若验证 `--cookie-from browser` 路径，书籍详情接口应按浏览器上下文链路验证，而不是只测手动 cookie 的 Node 请求
+- 若验证浏览器模式路径，书籍详情接口应按浏览器上下文链路验证，而不是只测手动 cookie 的 Node 请求
 
 ### 3. 本地 staging 安装态验证
 
@@ -250,7 +256,7 @@ node --test
 ```bash
 STAGING_DIR="$(bash ./scripts/prepare-staging-skill.sh)"
 OUT="$(mktemp -d /tmp/weread-staging-verify.XXXXXX)"
-bash "$STAGING_DIR/scripts/run.sh" --all --mode api --cookie-from browser --output "$OUT"
+bash "$STAGING_DIR/scripts/run.sh" --all --mode api --cookie-from browser-managed --output "$OUT"
 ```
 
 如果你在某个 agent 平台里还有真实安装态，也可以在 staging 验证通过后再补一轮平台内 smoke test；但发版门槛默认只要求隔离的 staging 安装态验证通过。

@@ -39,7 +39,7 @@ await fetcher.close();
 说明：
 
 - `api/user/notebook` 这类接口可直接用 Node 请求 + cookie 验证
-- `bookmarklist`、`review/list` 这类书籍详情接口，在 `--cookie-from browser` 场景下应复用浏览器上下文验证
+- `bookmarklist`、`review/list` 这类书籍详情接口，在浏览器模式场景下应复用浏览器上下文验证
 
 ### 0.3 本地真机完整导出
 
@@ -173,7 +173,7 @@ bash ./scripts/run.sh --all --mode api --cookie-from browser-managed --output "/
 处理步骤：
 1. 确认 Chrome 远程调试实例仍在运行
 2. 确认该实例中已登录微信读书
-3. 重新执行 `--cookie-from browser`
+3. 重新执行当前所用的浏览器模式；若是 `browser-live`，确认外部 CDP 仍在；若是 `browser-managed`，确认隔离窗口中的微信读书仍已登录
 4. 若仍失败，先按 `0.2` 的 API 探针区分是 cookie 问题、浏览器上下文问题，还是 CDP/环境问题
 
 ### 避免影响正式笔记
