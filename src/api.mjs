@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import { buildCookieHeader, WEREAD_COOKIE_URLS } from './cookie.mjs';
 import { cleanText } from './utils.mjs';
 import { WereadApiError, WereadAuthError } from './errors.mjs';
 
@@ -60,16 +61,26 @@ export async function wereadFetchJson(url, cookie, { method = 'GET', body, extra
   return parseWereadJsonResponse(url, res.status, text);
 }
 
-async function closeBrowserSession(browser, page) {
+async function closeBrowserSession(browser, page, { closePage = true } = {}) {
   try {
-    if (page && !page.isClosed()) await page.close();
+    if (closePage && page && !page.isClosed()) await page.close();
   } catch {}
   try {
-    if (browser && typeof browser.close === 'function') await browser.close();
+    if (!browser) return;
+    if (browser._shouldCloseConnectionOnClose === false && browser._connection && typeof browser._connection.close === 'function') {
+      browser._connection.close();
+      return;
+    }
+    if (typeof browser.close === 'function') await browser.close();
   } catch {}
 }
 
-export async function createWereadBrowserFetcher(cdpUrl, connectOverCDP = chromium.connectOverCDP.bind(chromium)) {
+export async function createWereadBrowserFetcher(cdpUrl, connectOverCDP = chromium.connectOverCDP.bind(chromium), options = {}) {
+  if (typeof connectOverCDP === 'object' && connectOverCDP !== null) {
+    options = connectOverCDP;
+    connectOverCDP = chromium.connectOverCDP.bind(chromium);
+  }
+  const { reuseExistingPage = false, keepPageOnClose = false } = options;
   const browser = await connectOverCDP(cdpUrl);
   const context = browser.contexts()[0];
   if (!context) {
@@ -77,11 +88,22 @@ export async function createWereadBrowserFetcher(cdpUrl, connectOverCDP = chromi
     throw new Error('无可用浏览器上下文，请确认已启动带远程调试的 Chrome');
   }
 
-  const page = await context.newPage();
-  await page.goto(`${WEREAD_BASE}/`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  const existingPage = reuseExistingPage
+    ? context.pages().find((candidate) => typeof candidate?.isClosed !== 'function' || !candidate.isClosed())
+    : null;
+  const page = existingPage || await context.newPage();
+  const ownsPage = !existingPage;
+  if (ownsPage) {
+    await page.goto(`${WEREAD_BASE}/`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  }
   let currentBookId = null;
 
   return {
+    async getCookieHeader() {
+      const cookieHeader = buildCookieHeader(await context.cookies(...WEREAD_COOKIE_URLS));
+      if (!cookieHeader) throw new Error('浏览器中未找到 weread.qq.com 的 cookie，请先在该浏览器中登录微信读书');
+      return cookieHeader;
+    },
     async fetchJson(url, { method = 'GET', body, extraHeaders = {} } = {}) {
       const bookId = extractBookIdFromUrl(url);
       if (bookId && bookId !== currentBookId) {
@@ -111,8 +133,10 @@ export async function createWereadBrowserFetcher(cdpUrl, connectOverCDP = chromi
       });
       return parseWereadJsonResponse(url, result.status, result.text);
     },
-    async close() {
-      await closeBrowserSession(browser, page);
+    async close(closeOptions = {}) {
+      await closeBrowserSession(browser, page, {
+        closePage: ownsPage && !(closeOptions.keepPage ?? keepPageOnClose),
+      });
     },
   };
 }

@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 import { isBrowserCookieMode, isManagedBrowserMode } from './browser-mode.mjs';
 
-const WEREAD_COOKIE_URLS = [
+export const WEREAD_COOKIE_URLS = [
   'https://weread.qq.com/',
   'https://weread.qq.com/api/user/notebook',
   'https://weread.qq.com/web/book/bookmarklist?bookId=1',
@@ -32,9 +32,15 @@ export function normalizeBrowserCookieError(error, { profileSyncMode = process.e
 }
 
 async function closeBrowser(browser, primaryError) {
-  if (!browser || typeof browser.close !== 'function') return;
+  if (!browser) return;
   try {
-    await browser.close();
+    if (browser._shouldCloseConnectionOnClose === false && browser._connection && typeof browser._connection.close === 'function') {
+      browser._connection.close();
+      return;
+    }
+    if (typeof browser.close === 'function') {
+      await browser.close();
+    }
   } catch (closeError) {
     if (!primaryError) throw closeError;
   }

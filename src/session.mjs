@@ -20,6 +20,14 @@ export async function createApiSessionManager(args, deps = {}) {
   const getCookie = deps.getCookieForApi || getCookieForApi;
   const refreshCookie = deps.extractCookieFromBrowser || extractCookieFromBrowser;
   const createBrowserFetcher = deps.createWereadBrowserFetcher || createWereadBrowserFetcher;
+  const managedBrowser = isManagedBrowserMode(args.cookieFrom);
+
+  async function openBrowserFetcher() {
+    return createBrowserFetcher(args.cdp, undefined, {
+      reuseExistingPage: managedBrowser,
+      keepPageOnClose: managedBrowser,
+    });
+  }
 
   let cookie = null;
   let browserFetcher = null;
@@ -42,12 +50,10 @@ export async function createApiSessionManager(args, deps = {}) {
     detailBookId = null;
   }
 
-  async function buildReadySession(nextCookie) {
+  async function buildReadySession(nextCookie, nextBrowserFetcher = null) {
     cookie = nextCookie;
     resetValidation();
-    if (isBrowserCookieMode(args.cookieFrom)) {
-      browserFetcher = await createBrowserFetcher(args.cdp);
-    }
+    browserFetcher = nextBrowserFetcher;
     state = 'ready';
     invalidReason = null;
     return getSnapshot();
@@ -106,6 +112,18 @@ export async function createApiSessionManager(args, deps = {}) {
       if (state === 'ready' && cookie) return getSnapshot();
       await closeFetcher();
       state = 'acquiring';
+      if (isBrowserCookieMode(args.cookieFrom)) {
+        const nextBrowserFetcher = await openBrowserFetcher();
+        try {
+          const nextCookie = typeof nextBrowserFetcher.getCookieHeader === 'function'
+            ? await nextBrowserFetcher.getCookieHeader()
+            : await getCookie(args);
+          return buildReadySession(nextCookie, nextBrowserFetcher);
+        } catch (error) {
+          await nextBrowserFetcher.close?.();
+          throw error;
+        }
+      }
       const nextCookie = await getCookie(args);
       return buildReadySession(nextCookie);
     },
@@ -115,8 +133,16 @@ export async function createApiSessionManager(args, deps = {}) {
       }
       await closeFetcher();
       state = 'refreshing';
-      const nextCookie = await refreshCookie(args.cdp);
-      return buildReadySession(nextCookie);
+      const nextBrowserFetcher = await openBrowserFetcher();
+      try {
+        const nextCookie = typeof nextBrowserFetcher.getCookieHeader === 'function'
+          ? await nextBrowserFetcher.getCookieHeader()
+          : await refreshCookie(args.cdp);
+        return buildReadySession(nextCookie, nextBrowserFetcher);
+      } catch (error) {
+        await nextBrowserFetcher.close?.();
+        throw error;
+      }
     },
     async close() {
       state = 'closed';
@@ -138,16 +164,8 @@ export async function runWithApiSessionRetry(args, run, deps = {}) {
       const snapshot = sessionManager.getSnapshot();
       const reason = snapshot.validation?.basicValidated ? 'detail_auth_error' : 'basic_auth_error';
       sessionManager.invalidate(reason);
-      warn('[warn] API cookie 已过期，正在从浏览器刷新...');
-      try {
-        const refreshedSession = await sessionManager.refresh();
-        return await run(refreshedSession, sessionManager);
-      } catch (retryErr) {
-        if (retryErr instanceof WereadAuthError) {
-          throw new Error(browserAuthFailureMessage(args.cookieFrom));
-        }
-        throw retryErr;
-      }
+      warn('[warn] API cookie 已过期，需要浏览器中的微信读书会话恢复后再重试。');
+      throw new Error(browserAuthFailureMessage(args.cookieFrom));
     }
     if (err instanceof WereadAuthError) {
       throw new Error('cookie 已过期，请更新 WEREAD_COOKIE 或使用 --cookie-from browser');

@@ -9,13 +9,13 @@ describe('createApiSessionManager', () => {
     const manager = await createApiSessionManager(
       { cookieFrom: 'browser', cdp: 'http://127.0.0.1:9222' },
       {
-        async getCookieForApi() {
-          calls.push('getCookie');
-          return 'cookie-1';
-        },
         async createWereadBrowserFetcher(cdpUrl) {
           calls.push(`fetcher:${cdpUrl}`);
           return {
+            async getCookieHeader() {
+              calls.push('getCookieHeader');
+              return 'cookie-1';
+            },
             fetchJson() {},
             async close() {
               calls.push('closeFetcher');
@@ -36,7 +36,7 @@ describe('createApiSessionManager', () => {
     });
 
     await manager.close();
-    assert.deepEqual(calls, ['getCookie', 'fetcher:http://127.0.0.1:9222', 'closeFetcher']);
+    assert.deepEqual(calls, ['fetcher:http://127.0.0.1:9222', 'getCookieHeader', 'closeFetcher']);
     assert.equal(manager.getState(), 'closed');
   });
 
@@ -46,19 +46,15 @@ describe('createApiSessionManager', () => {
     const manager = await createApiSessionManager(
       { cookieFrom: 'browser', cdp: 'http://127.0.0.1:9222' },
       {
-        async getCookieForApi() {
-          calls.push('getCookie');
-          return 'cookie-1';
-        },
-        async extractCookieFromBrowser(cdpUrl) {
-          calls.push(`refreshCookie:${cdpUrl}`);
-          return 'cookie-2';
-        },
         async createWereadBrowserFetcher() {
           fetcherIndex += 1;
           const label = `fetcher-${fetcherIndex}`;
           calls.push(label);
           return {
+            async getCookieHeader() {
+              calls.push(`cookie:${label}`);
+              return label === 'fetcher-1' ? 'cookie-1' : 'cookie-2';
+            },
             fetchJson() {},
             async close() {
               calls.push(`close:${label}`);
@@ -75,11 +71,11 @@ describe('createApiSessionManager', () => {
     await manager.close();
 
     assert.deepEqual(calls, [
-      'getCookie',
       'fetcher-1',
+      'cookie:fetcher-1',
       'close:fetcher-1',
-      'refreshCookie:http://127.0.0.1:9222',
       'fetcher-2',
+      'cookie:fetcher-2',
       'close:fetcher-2',
     ]);
   });
@@ -147,55 +143,43 @@ describe('createApiSessionManager', () => {
 });
 
 describe('runWithApiSessionRetry', () => {
-  it('retries once after browser auth failure', async () => {
+  it('surfaces a browser login message after browser auth failure without retrying immediately', async () => {
     const warnings = [];
     const calls = [];
-    let runCount = 0;
-
-    const result = await runWithApiSessionRetry(
-      { cookieFrom: 'browser', cdp: 'http://127.0.0.1:9222' },
-      async (session) => {
-        runCount += 1;
-        calls.push(`run:${runCount}:${session.cookie}`);
-        if (runCount === 1) throw new WereadAuthError('expired');
-        return 'ok';
-      },
-      {
-        warn(message) {
-          warnings.push(message);
+    await assert.rejects(
+      runWithApiSessionRetry(
+        { cookieFrom: 'browser', cdp: 'http://127.0.0.1:9222' },
+        async (session) => {
+          calls.push(`run:${session.cookie}`);
+          throw new WereadAuthError('expired');
         },
-        async getCookieForApi() {
-          calls.push('getCookie');
-          return 'cookie-1';
+        {
+          warn(message) {
+            warnings.push(message);
+          },
+          async createWereadBrowserFetcher() {
+            calls.push('fetcher-1');
+            return {
+              async getCookieHeader() {
+                calls.push('cookie:fetcher-1');
+                return 'cookie-1';
+              },
+              fetchJson() {},
+              async close() {
+                calls.push('close:fetcher-1');
+              },
+            };
+          },
         },
-        async extractCookieFromBrowser() {
-          calls.push('refreshCookie');
-          return 'cookie-2';
-        },
-        async createWereadBrowserFetcher() {
-          const id = `fetcher-${calls.filter((x) => x.startsWith('fetcher')).length + 1}`;
-          calls.push(id);
-          return {
-            fetchJson() {},
-            async close() {
-              calls.push(`close:${id}`);
-            },
-          };
-        },
-      },
+      ),
+      /隔离浏览器窗口中的微信读书尚未登录或登录已过期/,
     );
-
-    assert.equal(result, 'ok');
-    assert.deepEqual(warnings, ['[warn] API cookie 已过期，正在从浏览器刷新...']);
+    assert.deepEqual(warnings, ['[warn] API cookie 已过期，需要浏览器中的微信读书会话恢复后再重试。']);
     assert.deepEqual(calls, [
-      'getCookie',
       'fetcher-1',
-      'run:1:cookie-1',
+      'cookie:fetcher-1',
+      'run:cookie-1',
       'close:fetcher-1',
-      'refreshCookie',
-      'fetcher-2',
-      'run:2:cookie-2',
-      'close:fetcher-2',
     ]);
   });
 
@@ -214,11 +198,11 @@ describe('runWithApiSessionRetry', () => {
             async getCookieForApi() {
               return 'cookie-1';
             },
-            async extractCookieFromBrowser() {
-              throw new WereadAuthError('expired-again');
-            },
             async createWereadBrowserFetcher() {
               return {
+                async getCookieHeader() {
+                  return 'cookie-1';
+                },
                 fetchJson() {},
                 async close() {},
               };
@@ -248,11 +232,11 @@ describe('runWithApiSessionRetry', () => {
             async getCookieForApi() {
               return 'cookie-1';
             },
-            async extractCookieFromBrowser() {
-              throw new WereadAuthError('expired-again');
-            },
             async createWereadBrowserFetcher() {
               return {
+                async getCookieHeader() {
+                  return 'cookie-1';
+                },
                 fetchJson() {},
                 async close() {},
               };
@@ -271,22 +255,22 @@ describe('runWithApiSessionRetry', () => {
     await assert.rejects(
       runWithApiSessionRetry(
         { cookieFrom: 'browser-live', cdp: 'http://127.0.0.1:9222' },
-        async () => {
-          throw new WereadAuthError('expired');
-        },
-        {
-          warn() {},
-          async getCookieForApi() {
-            return 'cookie-1';
+          async () => {
+            throw new WereadAuthError('expired');
           },
-          async extractCookieFromBrowser() {
-            throw new WereadAuthError('expired-again');
-          },
-          async createWereadBrowserFetcher() {
-            return {
-              fetchJson() {},
-              async close() {},
-            };
+          {
+            warn() {},
+            async getCookieForApi() {
+              return 'cookie-1';
+            },
+            async createWereadBrowserFetcher() {
+              return {
+                async getCookieHeader() {
+                  return 'cookie-1';
+                },
+                fetchJson() {},
+                async close() {},
+              };
           },
         },
       ),
