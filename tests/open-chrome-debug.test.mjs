@@ -14,9 +14,9 @@ async function writeFile(filePath, content) {
   await fs.writeFile(filePath, content, 'utf8');
 }
 
-async function makeFakeChrome(root) {
+async function makeFakeChrome(root, logPath) {
   const fakeChrome = path.join(root, 'fake-chrome.sh');
-  await fs.writeFile(fakeChrome, '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$FAKE_CHROME_LOG"\n', 'utf8');
+  await fs.writeFile(fakeChrome, `#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "${logPath}"\n`, 'utf8');
   await fs.chmod(fakeChrome, 0o755);
   return fakeChrome;
 }
@@ -34,7 +34,9 @@ describe('open-chrome-debug.sh', () => {
     const source = path.join(root, 'source');
     const profile = path.join(root, 'profile');
     const logPath = path.join(root, 'chrome.log');
-    const fakeChrome = await makeFakeChrome(root);
+    const fakeChrome = await makeFakeChrome(root, logPath);
+    const fakeCurl = await makeFakeCurl(root, '#!/usr/bin/env bash\nexit 1\n');
+    const fakeBinDir = path.dirname(fakeCurl);
 
     await writeFile(path.join(source, 'Default/Cookies'), 'source-cookie');
     await writeFile(path.join(source, 'Default/Login Data For Account'), 'source-account');
@@ -44,10 +46,10 @@ describe('open-chrome-debug.sh', () => {
     await execFileAsync('bash', [scriptPath, '9333'], {
       env: {
         ...process.env,
+        PATH: `${fakeBinDir}:${process.env.PATH}`,
         WEREAD_CHROME_BIN: fakeChrome,
         WEREAD_CHROME_DEFAULT: source,
         WEREAD_PROFILE_DIR: profile,
-        FAKE_CHROME_LOG: logPath,
       },
     });
 
@@ -65,7 +67,9 @@ describe('open-chrome-debug.sh', () => {
     const source = path.join(root, 'source');
     const profile = path.join(root, 'profile');
     const logPath = path.join(root, 'chrome.log');
-    const fakeChrome = await makeFakeChrome(root);
+    const fakeChrome = await makeFakeChrome(root, logPath);
+    const fakeCurl = await makeFakeCurl(root, '#!/usr/bin/env bash\nexit 1\n');
+    const fakeBinDir = path.dirname(fakeCurl);
 
     await writeFile(path.join(source, 'Default/Cookies'), 'source-cookie');
     await writeFile(path.join(source, 'Default/Login Data For Account'), 'source-account');
@@ -95,11 +99,11 @@ describe('open-chrome-debug.sh', () => {
     await execFileAsync('bash', [scriptPath, '9334'], {
       env: {
         ...process.env,
+        PATH: `${fakeBinDir}:${process.env.PATH}`,
         WEREAD_CHROME_BIN: fakeChrome,
         WEREAD_CHROME_DEFAULT: source,
         WEREAD_PROFILE_DIR: profile,
         WEREAD_PROFILE_SYNC_MODE: 'legacy',
-        FAKE_CHROME_LOG: logPath,
       },
     });
 
@@ -117,7 +121,7 @@ describe('open-chrome-debug.sh', () => {
     const source = path.join(root, 'source');
     const profile = path.join(root, 'profile');
     const logPath = path.join(root, 'chrome.log');
-    const fakeChrome = await makeFakeChrome(root);
+    const fakeChrome = await makeFakeChrome(root, logPath);
     const fakeCurl = await makeFakeCurl(root);
     const fakeBinDir = path.dirname(fakeCurl);
 
@@ -135,7 +139,6 @@ describe('open-chrome-debug.sh', () => {
         WEREAD_CHROME_BIN: fakeChrome,
         WEREAD_CHROME_DEFAULT: source,
         WEREAD_PROFILE_DIR: profile,
-        FAKE_CHROME_LOG: logPath,
       },
     });
 

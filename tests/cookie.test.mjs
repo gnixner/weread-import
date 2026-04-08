@@ -83,13 +83,19 @@ describe('extractCookieFromBrowserWithConnector', () => {
 
 describe('normalizeBrowserCookieError', () => {
   it('explains the first-login requirement in isolated browser mode', () => {
-    const error = normalizeBrowserCookieError(new Error('浏览器中未找到 weread.qq.com 的 cookie，请先在该浏览器中登录微信读书'), 'isolated');
+    const error = normalizeBrowserCookieError(new Error('浏览器中未找到 weread.qq.com 的 cookie，请先在该浏览器中登录微信读书'), { profileSyncMode: 'isolated', cookieFrom: 'browser-managed' });
     assert.match(error.message, /隔离浏览器中尚未登录微信读书/);
   });
 
   it('preserves the original error outside isolated mode', () => {
     const original = new Error('浏览器中未找到 weread.qq.com 的 cookie，请先在该浏览器中登录微信读书');
-    const error = normalizeBrowserCookieError(original, 'legacy');
+    const error = normalizeBrowserCookieError(original, { profileSyncMode: 'legacy', cookieFrom: 'browser-managed' });
+    assert.equal(error, original);
+  });
+
+  it('preserves the original error in browser-live mode', () => {
+    const original = new Error('浏览器中未找到 weread.qq.com 的 cookie，请先在该浏览器中登录微信读书');
+    const error = normalizeBrowserCookieError(original, { profileSyncMode: 'isolated', cookieFrom: 'browser-live' });
     assert.equal(error, original);
   });
 });

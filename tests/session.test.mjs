@@ -267,6 +267,33 @@ describe('runWithApiSessionRetry', () => {
     }
   });
 
+  it('uses an external-chrome message in browser-live mode', async () => {
+    await assert.rejects(
+      runWithApiSessionRetry(
+        { cookieFrom: 'browser-live', cdp: 'http://127.0.0.1:9222' },
+        async () => {
+          throw new WereadAuthError('expired');
+        },
+        {
+          warn() {},
+          async getCookieForApi() {
+            return 'cookie-1';
+          },
+          async extractCookieFromBrowser() {
+            throw new WereadAuthError('expired-again');
+          },
+          async createWereadBrowserFetcher() {
+            return {
+              fetchJson() {},
+              async close() {},
+            };
+          },
+        },
+      ),
+      /已连接的外部 Chrome 中微信读书尚未登录或登录已过期/,
+    );
+  });
+
   it('converts manual auth failures into a cookie-expired message', async () => {
     await assert.rejects(
       runWithApiSessionRetry(

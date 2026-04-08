@@ -1,10 +1,14 @@
 import { createWereadBrowserFetcher } from './api.mjs';
 import { getCookieForApi, extractCookieFromBrowser } from './cookie.mjs';
 import { WereadAuthError } from './errors.mjs';
+import { isBrowserCookieMode, isManagedBrowserMode, isLiveBrowserMode } from './browser-mode.mjs';
 
 const WEREAD_BASE = 'https://weread.qq.com';
 
-function browserAuthFailureMessage() {
+function browserAuthFailureMessage(cookieFrom) {
+  if (isLiveBrowserMode(cookieFrom)) {
+    return '已连接的外部 Chrome 中微信读书尚未登录或登录已过期。请在该 Chrome 中登录微信读书后再重试。';
+  }
   const isolatedMode = (process.env.WEREAD_PROFILE_SYNC_MODE || 'isolated') === 'isolated';
   if (isolatedMode) {
     return '隔离浏览器窗口中的微信读书尚未登录或登录已过期。请在自动打开的独立 Chrome 窗口中登录微信读书后再重试。';
@@ -41,7 +45,7 @@ export async function createApiSessionManager(args, deps = {}) {
   async function buildReadySession(nextCookie) {
     cookie = nextCookie;
     resetValidation();
-    if (args.cookieFrom === 'browser') {
+    if (isBrowserCookieMode(args.cookieFrom)) {
       browserFetcher = await createBrowserFetcher(args.cdp);
     }
     state = 'ready';
@@ -82,7 +86,7 @@ export async function createApiSessionManager(args, deps = {}) {
     async ensureDetailReady(bookId) {
       if (!bookId) return getSnapshot();
       if (detailReady && detailBookId === String(bookId)) return getSnapshot();
-      if (args.cookieFrom !== 'browser') {
+      if (!isBrowserCookieMode(args.cookieFrom)) {
         detailReady = true;
         detailBookId = String(bookId);
         return getSnapshot();
@@ -106,7 +110,7 @@ export async function createApiSessionManager(args, deps = {}) {
       return buildReadySession(nextCookie);
     },
     async refresh() {
-      if (args.cookieFrom !== 'browser') {
+      if (!isBrowserCookieMode(args.cookieFrom)) {
         throw new Error('仅浏览器模式支持刷新 session');
       }
       await closeFetcher();
@@ -130,7 +134,7 @@ export async function runWithApiSessionRetry(args, run, deps = {}) {
     const session = await sessionManager.acquire();
     return await run(session, sessionManager);
   } catch (err) {
-    if (err instanceof WereadAuthError && args.cookieFrom === 'browser') {
+    if (err instanceof WereadAuthError && isBrowserCookieMode(args.cookieFrom)) {
       const snapshot = sessionManager.getSnapshot();
       const reason = snapshot.validation?.basicValidated ? 'detail_auth_error' : 'basic_auth_error';
       sessionManager.invalidate(reason);
@@ -140,7 +144,7 @@ export async function runWithApiSessionRetry(args, run, deps = {}) {
         return await run(refreshedSession, sessionManager);
       } catch (retryErr) {
         if (retryErr instanceof WereadAuthError) {
-          throw new Error(browserAuthFailureMessage());
+          throw new Error(browserAuthFailureMessage(args.cookieFrom));
         }
         throw retryErr;
       }
