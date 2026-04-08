@@ -8,6 +8,10 @@ export const WEREAD_COOKIE_URLS = [
   'https://weread.qq.com/web/review/list?bookId=1&listType=4&syncKey=0&mine=1',
 ];
 
+export const CDP_CONNECT_OPTIONS = {
+  acceptDownloads: 'internal-browser-default',
+};
+
 export function cookieMatchesHost(cookie, host = 'weread.qq.com') {
   const domain = String(cookie?.domain || '').replace(/^\./, '');
   return Boolean(domain) && (host === domain || host.endsWith(`.${domain}`));
@@ -47,7 +51,7 @@ async function closeBrowser(browser, primaryError) {
 }
 
 export async function extractCookieFromBrowserWithConnector(cdpUrl, connectOverCDP = chromium.connectOverCDP.bind(chromium)) {
-  const browser = await connectOverCDP(cdpUrl);
+  const browser = await connectOverCDP(cdpUrl, CDP_CONNECT_OPTIONS);
   let primaryError = null;
   try {
     const context = browser.contexts()[0];

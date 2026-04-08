@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCookieHeader, cookieMatchesHost, extractCookieFromBrowserWithConnector, normalizeBrowserCookieError } from '../src/cookie.mjs';
+import { buildCookieHeader, CDP_CONNECT_OPTIONS, cookieMatchesHost, extractCookieFromBrowserWithConnector, normalizeBrowserCookieError } from '../src/cookie.mjs';
 
 describe('cookieMatchesHost', () => {
   it('matches host-only and parent-domain cookies for weread.qq.com', () => {
@@ -47,14 +47,16 @@ describe('extractCookieFromBrowserWithConnector', () => {
       },
     };
 
-    const header = await extractCookieFromBrowserWithConnector('http://127.0.0.1:9222', async (cdpUrl) => {
+    const header = await extractCookieFromBrowserWithConnector('http://127.0.0.1:9222', async (cdpUrl, options) => {
       calls.push(`connect:${cdpUrl}`);
+      calls.push(['connectOptions', options]);
       return browser;
     });
 
     assert.equal(header, 'wr_gid=v; wxuin=skip');
     assert.deepEqual(calls, [
       'connect:http://127.0.0.1:9222',
+      ['connectOptions', CDP_CONNECT_OPTIONS],
       'contexts',
       [
         'cookies',

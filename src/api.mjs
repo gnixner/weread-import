@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import { buildCookieHeader, WEREAD_COOKIE_URLS } from './cookie.mjs';
+import { buildCookieHeader, CDP_CONNECT_OPTIONS, WEREAD_COOKIE_URLS } from './cookie.mjs';
 import { cleanText } from './utils.mjs';
 import { WereadApiError, WereadAuthError } from './errors.mjs';
 
@@ -81,7 +81,7 @@ export async function createWereadBrowserFetcher(cdpUrl, connectOverCDP = chromi
     connectOverCDP = chromium.connectOverCDP.bind(chromium);
   }
   const { reuseExistingPage = false, keepPageOnClose = false } = options;
-  const browser = await connectOverCDP(cdpUrl);
+  const browser = await connectOverCDP(cdpUrl, CDP_CONNECT_OPTIONS);
   const context = browser.contexts()[0];
   if (!context) {
     await closeBrowserSession(browser);

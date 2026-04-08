@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { WereadAuthError } from '../src/errors.mjs';
 import { createWereadBrowserFetcher, getBookmarks, getReviews } from '../src/api.mjs';
+import { CDP_CONNECT_OPTIONS } from '../src/cookie.mjs';
 
 describe('getBookmarks', () => {
   it('supports injected browser fetchers for detail APIs', async () => {
@@ -74,8 +75,9 @@ describe('createWereadBrowserFetcher', () => {
       },
     };
 
-    const fetcher = await createWereadBrowserFetcher('http://127.0.0.1:9222', async (cdpUrl) => {
+    const fetcher = await createWereadBrowserFetcher('http://127.0.0.1:9222', async (cdpUrl, options) => {
       calls.push(['connect', cdpUrl]);
+      calls.push(['connectOptions', options]);
       return browser;
     });
 
@@ -87,17 +89,18 @@ describe('createWereadBrowserFetcher', () => {
     assert.match(second.ok, /^https:\/\/weread\.qq\.com\/web\/review\/list\?bookId=1&listType=4&syncKey=0&mine=1&_=\d+$/);
     assert.deepEqual(calls.slice(0, 3), [
       ['connect', 'http://127.0.0.1:9222'],
+      ['connectOptions', CDP_CONNECT_OPTIONS],
       ['newPage'],
-      ['goto', 'https://weread.qq.com/', 'domcontentloaded'],
     ]);
-    assert.deepEqual(calls[3], ['goto', 'https://weread.qq.com/web/reader/1', 'domcontentloaded']);
-    assert.equal(calls[4][0], 'evaluate');
-    assert.match(calls[4][1], /^https:\/\/weread\.qq\.com\/web\/book\/bookmarklist\?bookId=1&_=\d+$/);
-    assert.equal(calls[4][2], 'GET');
+    assert.deepEqual(calls[3], ['goto', 'https://weread.qq.com/', 'domcontentloaded']);
+    assert.deepEqual(calls[4], ['goto', 'https://weread.qq.com/web/reader/1', 'domcontentloaded']);
     assert.equal(calls[5][0], 'evaluate');
-    assert.match(calls[5][1], /^https:\/\/weread\.qq\.com\/web\/review\/list\?bookId=1&listType=4&syncKey=0&mine=1&_=\d+$/);
+    assert.match(calls[5][1], /^https:\/\/weread\.qq\.com\/web\/book\/bookmarklist\?bookId=1&_=\d+$/);
     assert.equal(calls[5][2], 'GET');
-    assert.deepEqual(calls.slice(6), [
+    assert.equal(calls[6][0], 'evaluate');
+    assert.match(calls[6][1], /^https:\/\/weread\.qq\.com\/web\/review\/list\?bookId=1&listType=4&syncKey=0&mine=1&_=\d+$/);
+    assert.equal(calls[6][2], 'GET');
+    assert.deepEqual(calls.slice(7), [
       ['page.close'],
       ['browser.disconnect'],
     ]);
