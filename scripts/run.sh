@@ -23,7 +23,7 @@ fi
 CDP_PORT="${WEREAD_CDP_PORT:-9222}"
 if [ "$COOKIE_FROM" = "browser-managed" ]; then
   echo "正在校验 Chrome CDP..." >&2
-  (bash "$SCRIPT_DIR/open-chrome-debug.sh" "$CDP_PORT" > /dev/null 2>&1 &)
+  nohup bash "$SCRIPT_DIR/open-chrome-debug.sh" "$CDP_PORT" > /dev/null 2>&1 </dev/null &
   for i in $(seq 1 10); do
     sleep 1
     if curl -s "http://127.0.0.1:$CDP_PORT/json/version" > /dev/null 2>&1; then
