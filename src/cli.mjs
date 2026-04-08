@@ -10,6 +10,7 @@ import { extractComparableMapsFromMarkdown, extractIds } from './markdown-parser
 import { computeMergeStats } from './merge.mjs';
 import { loadState, saveState } from './state.mjs';
 import { runWithApiSessionRetry } from './session.mjs';
+import { normalizeCookieSource } from './browser-mode.mjs';
 
 const DEFAULT_OUTPUT = process.env.WEREAD_OUTPUT || path.resolve(process.cwd(), 'out', 'weread');
 const DEFAULT_CDP = process.env.WEREAD_CDP_URL || 'http://127.0.0.1:9222';
@@ -45,6 +46,7 @@ function parseArgs(argv) {
     else if (arg === '--cookie-from') args.cookieFrom = argv[++i] || 'manual';
     else if (arg === '--mode') args.mode = argv[++i] || 'api';
   }
+  args.cookieFrom = normalizeCookieSource(args.cookieFrom);
   if (!args.all && !args.book && !args.bookId) throw new Error('请指定 --all、--book <标题> 或 --book-id <ID>');
   return args;
 }

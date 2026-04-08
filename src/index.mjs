@@ -1,5 +1,6 @@
 export { WereadAuthError, WereadApiError } from './errors.mjs';
 export { sanitizeFileName, cleanText, yamlScalar } from './utils.mjs';
+export { normalizeCookieSource, isBrowserCookieMode, isManagedBrowserMode, isLiveBrowserMode } from './browser-mode.mjs';
 export { wereadFetchJson, getNotebookBooks, getBookmarks, getReviews } from './api.mjs';
 export { extractCookieFromBrowser, getCookieForApi } from './cookie.mjs';
 export { createApiSessionManager, runWithApiSessionRetry } from './session.mjs';

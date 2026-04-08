@@ -1,4 +1,5 @@
 import { chromium } from 'playwright';
+import { isBrowserCookieMode, isManagedBrowserMode } from './browser-mode.mjs';
 
 const WEREAD_COOKIE_URLS = [
   'https://weread.qq.com/',
@@ -17,6 +18,17 @@ export function buildCookieHeader(cookies, host = 'weread.qq.com') {
     .filter((cookie) => cookieMatchesHost(cookie, host) && cookie.name && cookie.value)
     .map((cookie) => `${cookie.name}=${cookie.value}`)
     .join('; ');
+}
+
+export function normalizeBrowserCookieError(error, { profileSyncMode = process.env.WEREAD_PROFILE_SYNC_MODE || 'isolated', cookieFrom = process.env.WEREAD_COOKIE_FROM || 'browser-managed' } = {}) {
+  if (!isManagedBrowserMode(cookieFrom)) {
+    return error;
+  }
+  const isolatedMode = profileSyncMode === 'isolated';
+  if (isolatedMode && /未找到 weread\.qq\.com 的 cookie/.test(String(error?.message || ''))) {
+    return new Error('隔离浏览器中尚未登录微信读书。请在自动打开的独立 Chrome 窗口中登录微信读书后再重试。');
+  }
+  return error;
 }
 
 async function closeBrowser(browser, primaryError) {
@@ -51,6 +63,12 @@ export async function extractCookieFromBrowser(cdpUrl) {
 
 export async function getCookieForApi(args) {
   if (args.cookie) return args.cookie;
-  if (args.cookieFrom === 'browser') return extractCookieFromBrowser(args.cdp);
-  throw new Error('API 模式需要 cookie，请通过 --cookie、WEREAD_COOKIE 或 --cookie-from browser 提供');
+  if (isBrowserCookieMode(args.cookieFrom)) {
+    try {
+      return extractCookieFromBrowser(args.cdp);
+    } catch (error) {
+      throw normalizeBrowserCookieError(error, { cookieFrom: args.cookieFrom });
+    }
+  }
+  throw new Error('API 模式需要 cookie，请通过 --cookie、WEREAD_COOKIE 或 --cookie-from browser-live/browser-managed 提供');
 }

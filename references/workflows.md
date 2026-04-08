@@ -39,7 +39,7 @@ await fetcher.close();
 说明：
 
 - `api/user/notebook` 这类接口可直接用 Node 请求 + cookie 验证
-- `bookmarklist`、`review/list` 这类书籍详情接口，在 `--cookie-from browser` 场景下应复用浏览器上下文验证
+- `bookmarklist`、`review/list` 这类书籍详情接口，在浏览器模式场景下应复用浏览器上下文验证
 
 ### 0.3 本地真机完整导出
 
@@ -54,7 +54,7 @@ await fetcher.close();
 
 ```bash
 OUT=$(mktemp -d /tmp/weread-verify.XXXXXX)
-bash ./scripts/run.sh --all --mode api --cookie-from browser --output "$OUT"
+bash ./scripts/run.sh --all --mode api --cookie-from browser-managed --output "$OUT"
 ```
 
 ### 0.4 本地 staging 安装态验证
@@ -76,7 +76,7 @@ OUT=$(mktemp -d /tmp/weread-staging-verify.XXXXXX)
 bash "$STAGING_DIR/scripts/run.sh" \
   --all \
   --mode api \
-  --cookie-from browser \
+  --cookie-from browser-managed \
   --output "$OUT"
 ```
 
@@ -104,7 +104,7 @@ bash "$STAGING_DIR/scripts/run.sh" \
 适用场景：已确定输出目录，将微信读书笔记导入到 Obsidian 或其他目录。
 
 ```bash
-bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser --output "/path/to/Reading"
+bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser-managed --output "/path/to/Reading"
 ```
 
 ## 2. 临时验证后再写入正式目录
@@ -114,13 +114,13 @@ bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser 
 先输出到临时目录：
 
 ```bash
-bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser --output /tmp/weread-verify --force
+bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser-managed --output /tmp/weread-verify --force
 ```
 
 确认无误后，写入正式目录：
 
 ```bash
-bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser --output "/path/to/Reading" --force
+bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser-managed --output "/path/to/Reading" --force
 ```
 
 ## 3. 重新渲染已有文件
@@ -128,7 +128,7 @@ bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser 
 适用场景：模板、frontmatter、tags 或删除归档逻辑发生变化后，需要重新生成。
 
 ```bash
-bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser --output "/path/to/Reading" --force
+bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser-managed --output "/path/to/Reading" --force
 ```
 
 ## 4. 自定义 frontmatter tags
@@ -136,13 +136,13 @@ bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser 
 通过命令行参数：
 
 ```bash
-bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser --output "/path/to/Reading" --tags "reading/weread,book"
+bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser-managed --output "/path/to/Reading" --tags "reading/weread,book"
 ```
 
 或通过环境变量：
 
 ```bash
-WEREAD_TAGS="reading/weread,book" bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser --output "/path/to/Reading"
+WEREAD_TAGS="reading/weread,book" bash ./scripts/run.sh --book "自卑与超越" --mode api --cookie-from browser-managed --output "/path/to/Reading"
 ```
 
 ## 5. 定时同步
@@ -150,13 +150,18 @@ WEREAD_TAGS="reading/weread,book" bash ./scripts/run.sh --book "自卑与超越"
 适用场景：通过 cron 或 agent 定时任务自动同步全部书籍。
 
 ```bash
-bash ./scripts/run.sh --all --mode api --cookie-from browser --output "/path/to/Reading"
+bash ./scripts/run.sh --all --mode api --cookie-from browser-managed --output "/path/to/Reading"
 ```
 
 注意事项：
 - 不加 `--force`，依赖增量机制跳过无变化的书籍
-- 必须使用 `--cookie-from browser`，不要硬编码 cookie
+- `browser-live` 适合复用已有外部 Chrome CDP
+- `browser-managed` 适合隔离会话，避免影响主浏览器其他站点登录
+- `browser` 仅作为 `browser-managed` 的兼容别名
 - 前提是 Chrome CDP 运行中且已登录微信读书
+- 默认受管浏览器使用隔离 profile，不会同步默认 Chrome 的整份登录态
+- 默认隔离 profile 目录为 `~/.weread-import-profile-isolated`
+- 如需保留旧的 profile 同步行为，显式设置 `WEREAD_PROFILE_SYNC_MODE=legacy`
 - 失败时直接报告错误，不要重试或变更参数
 
 ## 6. 常见问题
@@ -168,7 +173,7 @@ bash ./scripts/run.sh --all --mode api --cookie-from browser --output "/path/to/
 处理步骤：
 1. 确认 Chrome 远程调试实例仍在运行
 2. 确认该实例中已登录微信读书
-3. 重新执行 `--cookie-from browser`
+3. 重新执行当前所用的浏览器模式；若是 `browser-live`，确认外部 CDP 仍在；若是 `browser-managed`，确认隔离窗口中的微信读书仍已登录
 4. 若仍失败，先按 `0.2` 的 API 探针区分是 cookie 问题、浏览器上下文问题，还是 CDP/环境问题
 
 ### 避免影响正式笔记

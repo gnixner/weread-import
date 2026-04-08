@@ -2,9 +2,15 @@
 set -euo pipefail
 
 PORT="${1:-9222}"
-PROFILE_DIR="${WEREAD_PROFILE_DIR:-$HOME/.weread-import-profile}"
+PROFILE_SYNC_MODE="${WEREAD_PROFILE_SYNC_MODE:-isolated}"
+DEFAULT_PROFILE_DIR="$HOME/.weread-import-profile"
+if [ "$PROFILE_SYNC_MODE" = "isolated" ]; then
+  DEFAULT_PROFILE_DIR="$HOME/.weread-import-profile-isolated"
+fi
+PROFILE_DIR="${WEREAD_PROFILE_DIR:-$DEFAULT_PROFILE_DIR}"
 CHROME_BIN="${WEREAD_CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}"
 CHROME_DEFAULT="${WEREAD_CHROME_DEFAULT:-$HOME/Library/Application Support/Google/Chrome}"
+START_URL="${WEREAD_BROWSER_START_URL:-https://weread.qq.com/}"
 
 SYNC_ITEMS=(
   "Default/Cookies"
@@ -24,6 +30,10 @@ if [ ! -x "$CHROME_BIN" ]; then
 fi
 
 needs_profile_sync() {
+  if [ "$PROFILE_SYNC_MODE" != "legacy" ]; then
+    return 1
+  fi
+
   if [ ! -d "$PROFILE_DIR/Default" ] || [ "${SYNC_PROFILE:-}" = "1" ]; then
     return 0
   fi
@@ -54,6 +64,10 @@ sync_profile() {
     fi
   done
   echo "同步完成。" >&2
+}
+
+ensure_profile_dir() {
+  mkdir -p "$PROFILE_DIR/Default"
 }
 
 cdp_running() {
@@ -104,8 +118,11 @@ fi
 
 if needs_profile_sync; then
   sync_profile
+else
+  ensure_profile_dir
 fi
 
 exec "$CHROME_BIN" \
   --remote-debugging-port="$PORT" \
-  --user-data-dir="$PROFILE_DIR"
+  --user-data-dir="$PROFILE_DIR" \
+  "$START_URL"
