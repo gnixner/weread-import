@@ -64,14 +64,11 @@ describe('createWereadBrowserFetcher', () => {
       },
     };
     const browser = {
-      _shouldCloseConnectionOnClose: false,
-      _connection: {
-        close() {
-          calls.push(['browser.disconnect']);
-        },
-      },
       contexts() {
         return [{ async newPage() { calls.push(['newPage']); return page; } }];
+      },
+      async close() {
+        calls.push(['browser.close']);
       },
     };
 
@@ -102,7 +99,7 @@ describe('createWereadBrowserFetcher', () => {
     assert.equal(calls[6][2], 'GET');
     assert.deepEqual(calls.slice(7), [
       ['page.close'],
-      ['browser.disconnect'],
+      ['browser.close'],
     ]);
   });
 
@@ -123,13 +120,10 @@ describe('createWereadBrowserFetcher', () => {
       async close() {},
     };
     const browser = {
-      _shouldCloseConnectionOnClose: false,
-      _connection: {
-        close() {},
-      },
       contexts() {
         return [{ async newPage() { return page; } }];
       },
+      async close() {},
     };
 
     const fetcher = await createWereadBrowserFetcher('http://127.0.0.1:9222', async () => browser);

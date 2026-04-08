@@ -67,10 +67,6 @@ async function closeBrowserSession(browser, page, { closePage = true } = {}) {
   } catch {}
   try {
     if (!browser) return;
-    if (browser._shouldCloseConnectionOnClose === false && browser._connection && typeof browser._connection.close === 'function') {
-      browser._connection.close();
-      return;
-    }
     if (typeof browser.close === 'function') await browser.close();
   } catch {}
 }

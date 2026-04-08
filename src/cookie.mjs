@@ -38,10 +38,6 @@ export function normalizeBrowserCookieError(error, { profileSyncMode = process.e
 async function closeBrowser(browser, primaryError) {
   if (!browser) return;
   try {
-    if (browser._shouldCloseConnectionOnClose === false && browser._connection && typeof browser._connection.close === 'function') {
-      browser._connection.close();
-      return;
-    }
     if (typeof browser.close === 'function') {
       await browser.close();
     }

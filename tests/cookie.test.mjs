@@ -27,12 +27,6 @@ describe('extractCookieFromBrowserWithConnector', () => {
   it('disconnects a CDP browser after extracting cookies without closing the browser process', async () => {
     const calls = [];
     const browser = {
-      _shouldCloseConnectionOnClose: false,
-      _connection: {
-        close() {
-          calls.push('disconnect');
-        },
-      },
       contexts() {
         calls.push('contexts');
         return [{
@@ -44,6 +38,9 @@ describe('extractCookieFromBrowserWithConnector', () => {
             ];
           },
         }];
+      },
+      async close() {
+        calls.push('browser.close');
       },
     };
 
@@ -65,17 +62,14 @@ describe('extractCookieFromBrowserWithConnector', () => {
         'https://weread.qq.com/web/book/bookmarklist?bookId=1',
         'https://weread.qq.com/web/review/list?bookId=1&listType=4&syncKey=0&mine=1',
       ],
-      'disconnect',
+      'browser.close',
     ]);
   });
 
   it('preserves the primary error when browser cleanup also fails', async () => {
     const browser = {
-      _shouldCloseConnectionOnClose: false,
-      _connection: {
-        close() {
-          throw new Error('cleanup failed');
-        },
+      async close() {
+        throw new Error('cleanup failed');
       },
       contexts() {
         return [];
