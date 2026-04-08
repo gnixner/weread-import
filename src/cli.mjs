@@ -4,7 +4,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { WereadAuthError } from './errors.mjs';
 import { sanitizeFileName } from './utils.mjs';
-import { getNotebookBooks, getBookmarks, getReviews } from './api.mjs';
+import { createWereadBrowserFetcher, getNotebookBooks, getBookmarks, getReviews } from './api.mjs';
 import { getCookieForApi, extractCookieFromBrowser } from './cookie.mjs';
 import { buildBookmarkEntries, buildReviewEntries, comparableBookmarkEntry, comparableReviewEntry, collectBookmarkIds, collectReviewIds } from './entries.mjs';
 import { buildMarkdownFromApi, writeBook } from './render.mjs';
@@ -51,7 +51,9 @@ function parseArgs(argv) {
 }
 
 async function importOneBookByApi(book, outputDir, cookie, options = {}) {
-  const [bookmarks, reviews] = await Promise.all([getBookmarks(cookie, book.bookId), getReviews(cookie, book.bookId)]);
+  const detailFetchOptions = options.detailFetchJson ? { fetchJson: options.detailFetchJson } : {};
+  const bookmarks = await getBookmarks(cookie, book.bookId, detailFetchOptions);
+  const reviews = await getReviews(cookie, book.bookId, detailFetchOptions);
   const fileName = `${sanitizeFileName(book.title)}.md`;
   const filePath = path.join(outputDir, fileName);
   let existing = '';
@@ -121,46 +123,54 @@ async function resolveBooksForImport(args, cookie) {
 
 async function importViaApi(args) {
   const cookie = await getCookieForApi(args);
-  const state = await loadState(args.output);
-  const books = await resolveBooksForImport(args, cookie);
-  const results = [];
-  let skipped = 0;
-  for (const book of books) {
-    const prev = state.data.books?.[book.bookId];
-    const currentStamp = Number(book.sort || 0);
-    if (!args.force && prev && Number(prev.lastNoteUpdate || 0) >= currentStamp && prev.fileName) {
-      skipped += 1;
-      console.log(`Skipped [api]: ${book.title} (unchanged)`);
-      continue;
+  const browserFetcher = args.cookieFrom === 'browser' ? await createWereadBrowserFetcher(args.cdp) : null;
+  try {
+    const state = await loadState(args.output);
+    const books = await resolveBooksForImport(args, cookie);
+    const results = [];
+    let skipped = 0;
+    for (const book of books) {
+      const prev = state.data.books?.[book.bookId];
+      const currentStamp = Number(book.sort || 0);
+      if (!args.force && prev && Number(prev.lastNoteUpdate || 0) >= currentStamp && prev.fileName) {
+        skipped += 1;
+        console.log(`Skipped [api]: ${book.title} (unchanged)`);
+        continue;
+      }
+      const res = await importOneBookByApi(book, args.output, cookie, {
+        tags: args.tags,
+        detailFetchJson: browserFetcher?.fetchJson.bind(browserFetcher),
+      });
+      const prevBookmarkIds = Array.isArray(prev?.bookmarkIds) ? prev.bookmarkIds : [];
+      const prevReviewIds = Array.isArray(prev?.reviewIds) ? prev.reviewIds : [];
+      const addedBookmarkIds = res.bookmarkIds.filter((id) => !prevBookmarkIds.includes(id));
+      const addedReviewIds = res.reviewIds.filter((id) => !prevReviewIds.includes(id));
+      state.data.books[book.bookId] = {
+        title: book.title,
+        author: book.author || '',
+        fileName: path.basename(res.filePath),
+        lastNoteUpdate: currentStamp,
+        lastImportedAt: new Date().toISOString(),
+        bookmarkIds: res.bookmarkIds,
+        reviewIds: res.reviewIds,
+        bookmarkEntryMap: res.bookmarkEntryMap || {},
+        reviewEntryMap: res.reviewEntryMap || {},
+        bookmarkCount: res.bookmarkCount,
+        reviewCount: res.reviewCount,
+        lastDelta: { addedBookmarks: addedBookmarkIds.length, addedReviews: addedReviewIds.length },
+        lastMergeStats: res.mergeStats || null,
+        mode: 'api',
+      };
+      results.push(res);
+      const delta = state.data.books[book.bookId].lastDelta;
+      const mergeInfo = res.mergeStats ? `, merge(bookmarks a/u/r/d=${res.mergeStats.bookmarks.added}/${res.mergeStats.bookmarks.updated}/${res.mergeStats.bookmarks.retained}/${res.mergeStats.bookmarks.deleted}; reviews a/u/r/d=${res.mergeStats.reviews.added}/${res.mergeStats.reviews.updated}/${res.mergeStats.reviews.retained}/${res.mergeStats.reviews.deleted})` : '';
+      console.log(`Imported [api]: ${res.title} -> ${res.filePath} (${res.merged ? 'merged' : 'new'}, highlights=${res.bookmarkCount}, reviews=${res.reviewCount}, +bookmarks=${delta.addedBookmarks}, +reviews=${delta.addedReviews}${mergeInfo})`);
     }
-    const res = await importOneBookByApi(book, args.output, cookie, { tags: args.tags });
-    const prevBookmarkIds = Array.isArray(prev?.bookmarkIds) ? prev.bookmarkIds : [];
-    const prevReviewIds = Array.isArray(prev?.reviewIds) ? prev.reviewIds : [];
-    const addedBookmarkIds = res.bookmarkIds.filter((id) => !prevBookmarkIds.includes(id));
-    const addedReviewIds = res.reviewIds.filter((id) => !prevReviewIds.includes(id));
-    state.data.books[book.bookId] = {
-      title: book.title,
-      author: book.author || '',
-      fileName: path.basename(res.filePath),
-      lastNoteUpdate: currentStamp,
-      lastImportedAt: new Date().toISOString(),
-      bookmarkIds: res.bookmarkIds,
-      reviewIds: res.reviewIds,
-      bookmarkEntryMap: res.bookmarkEntryMap || {},
-      reviewEntryMap: res.reviewEntryMap || {},
-      bookmarkCount: res.bookmarkCount,
-      reviewCount: res.reviewCount,
-      lastDelta: { addedBookmarks: addedBookmarkIds.length, addedReviews: addedReviewIds.length },
-      lastMergeStats: res.mergeStats || null,
-      mode: 'api',
-    };
-    results.push(res);
-    const delta = state.data.books[book.bookId].lastDelta;
-    const mergeInfo = res.mergeStats ? `, merge(bookmarks a/u/r/d=${res.mergeStats.bookmarks.added}/${res.mergeStats.bookmarks.updated}/${res.mergeStats.bookmarks.retained}/${res.mergeStats.bookmarks.deleted}; reviews a/u/r/d=${res.mergeStats.reviews.added}/${res.mergeStats.reviews.updated}/${res.mergeStats.reviews.retained}/${res.mergeStats.reviews.deleted})` : '';
-    console.log(`Imported [api]: ${res.title} -> ${res.filePath} (${res.merged ? 'merged' : 'new'}, highlights=${res.bookmarkCount}, reviews=${res.reviewCount}, +bookmarks=${delta.addedBookmarks}, +reviews=${delta.addedReviews}${mergeInfo})`);
+    await saveState(state);
+    console.log(`Done. Imported ${results.length} book(s) by API. Skipped ${skipped} unchanged book(s).`);
+  } finally {
+    await browserFetcher?.close();
   }
-  await saveState(state);
-  console.log(`Done. Imported ${results.length} book(s) by API. Skipped ${skipped} unchanged book(s).`);
 }
 
 async function main() {

@@ -1,3 +1,4 @@
+import { chromium } from 'playwright';
 import { cleanText } from './utils.mjs';
 import { WereadApiError, WereadAuthError } from './errors.mjs';
 
@@ -9,6 +10,39 @@ const AUTH_ERROR_CODES = [-1, -2, -100, -2010, -2012];
 function appendCacheBuster(url) {
   const sep = url.includes('?') ? '&' : '?';
   return `${url}${sep}_=${Date.now()}`;
+}
+
+function extractBookIdFromUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.searchParams.get('bookId');
+  } catch {
+    return null;
+  }
+}
+
+function parseWereadJsonResponse(url, status, text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new WereadApiError(`响应非合法 JSON: ${url}\n${text.slice(0, 500)}`);
+  }
+  if (status < 200 || status >= 300) {
+    const code = data?.errcode ?? data?.errCode ?? data?.data?.errcode ?? data?.data?.errCode ?? 0;
+    if (AUTH_ERROR_CODES.includes(Number(code)) || status === 401) {
+      throw new WereadAuthError(`HTTP ${status} 错误: ${url}\n${text.slice(0, 500)}`);
+    }
+    throw new WereadApiError(`HTTP ${status} 错误: ${url}\n${text.slice(0, 500)}`);
+  }
+  const businessErrCode = data?.errCode ?? data?.errcode ?? 0;
+  const businessErrMsg = data?.errMsg ?? data?.errmsg ?? '';
+  if (businessErrCode && Number(businessErrCode) !== 0) {
+    const isAuth = /login|auth|expire|token/i.test(businessErrMsg) || AUTH_ERROR_CODES.includes(Number(businessErrCode));
+    const ErrClass = isAuth ? WereadAuthError : WereadApiError;
+    throw new ErrClass(`业务错误 ${businessErrCode}: ${url}\n${businessErrMsg || text.slice(0, 500)}`);
+  }
+  return data;
 }
 
 export async function wereadFetchJson(url, cookie, { method = 'GET', body, extraHeaders = {} } = {}) {
@@ -23,27 +57,64 @@ export async function wereadFetchJson(url, cookie, { method = 'GET', body, extra
   if (body) headers['content-type'] = 'application/json;charset=UTF-8';
   const res = await fetch(finalUrl, { method, headers, body });
   const text = await res.text();
-  let data;
+  return parseWereadJsonResponse(url, res.status, text);
+}
+
+async function closeBrowserSession(browser, page) {
   try {
-    data = JSON.parse(text);
-  } catch {
-    throw new WereadApiError(`响应非合法 JSON: ${url}\n${text.slice(0, 500)}`);
+    if (page && !page.isClosed()) await page.close();
+  } catch {}
+  try {
+    if (browser && typeof browser.close === 'function') await browser.close();
+  } catch {}
+}
+
+export async function createWereadBrowserFetcher(cdpUrl, connectOverCDP = chromium.connectOverCDP.bind(chromium)) {
+  const browser = await connectOverCDP(cdpUrl);
+  const context = browser.contexts()[0];
+  if (!context) {
+    await closeBrowserSession(browser);
+    throw new Error('无可用浏览器上下文，请确认已启动带远程调试的 Chrome');
   }
-  if (!res.ok) {
-    const code = data?.errcode ?? data?.errCode ?? data?.data?.errcode ?? data?.data?.errCode ?? 0;
-    if (AUTH_ERROR_CODES.includes(Number(code)) || res.status === 401) {
-      throw new WereadAuthError(`HTTP ${res.status} 错误: ${url}\n${text.slice(0, 500)}`);
-    }
-    throw new WereadApiError(`HTTP ${res.status} 错误: ${url}\n${text.slice(0, 500)}`);
-  }
-  const businessErrCode = data?.errCode ?? data?.errcode ?? 0;
-  const businessErrMsg = data?.errMsg ?? data?.errmsg ?? '';
-  if (businessErrCode && Number(businessErrCode) !== 0) {
-    const isAuth = /login|auth|expire|token/i.test(businessErrMsg) || AUTH_ERROR_CODES.includes(Number(businessErrCode));
-    const ErrClass = isAuth ? WereadAuthError : WereadApiError;
-    throw new ErrClass(`业务错误 ${businessErrCode}: ${url}\n${businessErrMsg || text.slice(0, 500)}`);
-  }
-  return data;
+
+  const page = await context.newPage();
+  await page.goto(`${WEREAD_BASE}/`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  let currentBookId = null;
+
+  return {
+    async fetchJson(url, { method = 'GET', body, extraHeaders = {} } = {}) {
+      const bookId = extractBookIdFromUrl(url);
+      if (bookId && bookId !== currentBookId) {
+        await page.goto(`${WEREAD_BASE}/web/reader/${encodeURIComponent(bookId)}`, {
+          waitUntil: 'domcontentloaded',
+          timeout: 60000,
+        });
+        currentBookId = bookId;
+      }
+      const finalUrl = method === 'GET' ? appendCacheBuster(url) : url;
+      const headers = { ...extraHeaders };
+      if (body && !headers['content-type']) headers['content-type'] = 'application/json;charset=UTF-8';
+      const result = await page.evaluate(async ({ requestUrl, requestMethod, requestBody, requestHeaders }) => {
+        const res = await fetch(requestUrl, {
+          method: requestMethod,
+          body: requestBody,
+          headers: requestHeaders,
+          credentials: 'include',
+        });
+        const text = await res.text();
+        return { status: res.status, text };
+      }, {
+        requestUrl: finalUrl,
+        requestMethod: method,
+        requestBody: body ?? null,
+        requestHeaders: headers,
+      });
+      return parseWereadJsonResponse(url, result.status, result.text);
+    },
+    async close() {
+      await closeBrowserSession(browser, page);
+    },
+  };
 }
 
 function normalizeBookshelfBooks(data) {
@@ -60,8 +131,9 @@ export async function getNotebookBooks(cookie) {
   return normalizeBookshelfBooks(await wereadFetchJson(`${WEREAD_BASE}/api/user/notebook`, cookie));
 }
 
-export async function getBookmarks(cookie, bookId) {
-  const data = await wereadFetchJson(`${WEREAD_BASE}/web/book/bookmarklist?bookId=${encodeURIComponent(bookId)}`, cookie);
+export async function getBookmarks(cookie, bookId, { fetchJson } = {}) {
+  const loadJson = fetchJson || ((url, options) => wereadFetchJson(url, cookie, options));
+  const data = await loadJson(`${WEREAD_BASE}/web/book/bookmarklist?bookId=${encodeURIComponent(bookId)}`);
   const chapters = Array.isArray(data.chapters) ? data.chapters : [];
   const chapterMap = new Map(chapters.map((item) => [
     String(item.chapterUid),
@@ -78,7 +150,8 @@ export async function getBookmarks(cookie, bookId) {
   }));
 }
 
-export async function getReviews(cookie, bookId) {
-  const data = await wereadFetchJson(`${WEREAD_BASE}/web/review/list?bookId=${encodeURIComponent(bookId)}&listType=4&syncKey=0&mine=1`, cookie);
+export async function getReviews(cookie, bookId, { fetchJson } = {}) {
+  const loadJson = fetchJson || ((url, options) => wereadFetchJson(url, cookie, options));
+  const data = await loadJson(`${WEREAD_BASE}/web/review/list?bookId=${encodeURIComponent(bookId)}&listType=4&syncKey=0&mine=1`);
   return Array.isArray(data.reviews) ? data.reviews : [];
 }

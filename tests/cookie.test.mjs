@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCookieHeader, cookieLooksRelevantToWeRead, cookieMatchesHost, extractCookieFromBrowserWithConnector } from '../src/cookie.mjs';
+import { buildCookieHeader, cookieMatchesHost, extractCookieFromBrowserWithConnector } from '../src/cookie.mjs';
 
 describe('cookieMatchesHost', () => {
   it('matches host-only and parent-domain cookies for weread.qq.com', () => {
@@ -21,25 +21,6 @@ describe('buildCookieHeader', () => {
     ]);
     assert.equal(header, 'wr_skey=a; wr_gid=b; _clck=c');
   });
-
-  it('keeps Tencent login cookies that do not directly match weread.qq.com', () => {
-    const header = buildCookieHeader([
-      { name: 'wr_skey', value: 'a', domain: '.weread.qq.com' },
-      { name: 'wxuin', value: 'b', domain: '.qq.com' },
-      { name: 'appuser', value: 'c', domain: '.wechat.com' },
-      { name: 'sid', value: 'd', domain: '.example.com' },
-    ]);
-    assert.equal(header, 'wr_skey=a; wxuin=b; appuser=c');
-  });
-});
-
-describe('cookieLooksRelevantToWeRead', () => {
-  it('accepts weread and tencent-auth cookies, rejects unrelated domains', () => {
-    assert.equal(cookieLooksRelevantToWeRead({ name: 'wr_gid', domain: 'weread.qq.com' }), true);
-    assert.equal(cookieLooksRelevantToWeRead({ name: 'wxuin', domain: '.qq.com' }), true);
-    assert.equal(cookieLooksRelevantToWeRead({ name: 'appuser', domain: '.wechat.com' }), true);
-    assert.equal(cookieLooksRelevantToWeRead({ name: 'foo', domain: '.example.com' }), false);
-  });
 });
 
 describe('extractCookieFromBrowserWithConnector', () => {
@@ -49,9 +30,12 @@ describe('extractCookieFromBrowserWithConnector', () => {
       contexts() {
         calls.push('contexts');
         return [{
-          async cookies() {
-            calls.push('cookies');
-            return [{ name: 'wr_gid', value: 'v', domain: 'weread.qq.com' }];
+          async cookies(...urls) {
+            calls.push(['cookies', ...urls]);
+            return [
+              { name: 'wr_gid', value: 'v', domain: 'weread.qq.com' },
+              { name: 'wxuin', value: 'skip', domain: '.qq.com' },
+            ];
           },
         }];
       },
@@ -65,8 +49,19 @@ describe('extractCookieFromBrowserWithConnector', () => {
       return browser;
     });
 
-    assert.equal(header, 'wr_gid=v');
-    assert.deepEqual(calls, ['connect:http://127.0.0.1:9222', 'contexts', 'cookies', 'close']);
+    assert.equal(header, 'wr_gid=v; wxuin=skip');
+    assert.deepEqual(calls, [
+      'connect:http://127.0.0.1:9222',
+      'contexts',
+      [
+        'cookies',
+        'https://weread.qq.com/',
+        'https://weread.qq.com/api/user/notebook',
+        'https://weread.qq.com/web/book/bookmarklist?bookId=1',
+        'https://weread.qq.com/web/review/list?bookId=1&listType=4&syncKey=0&mine=1',
+      ],
+      'close',
+    ]);
   });
 
   it('preserves the primary error when browser cleanup also fails', async () => {
