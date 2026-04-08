@@ -2,15 +2,14 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
-import { WereadAuthError } from './errors.mjs';
 import { sanitizeFileName } from './utils.mjs';
-import { createWereadBrowserFetcher, getNotebookBooks, getBookmarks, getReviews } from './api.mjs';
-import { getCookieForApi, extractCookieFromBrowser } from './cookie.mjs';
+import { getNotebookBooks, getBookmarks, getReviews } from './api.mjs';
 import { buildBookmarkEntries, buildReviewEntries, comparableBookmarkEntry, comparableReviewEntry, collectBookmarkIds, collectReviewIds } from './entries.mjs';
 import { buildMarkdownFromApi, writeBook } from './render.mjs';
 import { extractComparableMapsFromMarkdown, extractIds } from './markdown-parser.mjs';
 import { computeMergeStats } from './merge.mjs';
 import { loadState, saveState } from './state.mjs';
+import { runWithApiSessionRetry } from './session.mjs';
 
 const DEFAULT_OUTPUT = process.env.WEREAD_OUTPUT || path.resolve(process.cwd(), 'out', 'weread');
 const DEFAULT_CDP = process.env.WEREAD_CDP_URL || 'http://127.0.0.1:9222';
@@ -121,80 +120,59 @@ async function resolveBooksForImport(args, cookie) {
   throw new Error('无法确定要导入的书籍，请使用 --all、--book 或 --book-id');
 }
 
-async function importViaApi(args) {
-  const cookie = await getCookieForApi(args);
-  const browserFetcher = args.cookieFrom === 'browser' ? await createWereadBrowserFetcher(args.cdp) : null;
-  try {
-    const state = await loadState(args.output);
-    const books = await resolveBooksForImport(args, cookie);
-    const results = [];
-    let skipped = 0;
-    for (const book of books) {
-      const prev = state.data.books?.[book.bookId];
-      const currentStamp = Number(book.sort || 0);
-      if (!args.force && prev && Number(prev.lastNoteUpdate || 0) >= currentStamp && prev.fileName) {
-        skipped += 1;
-        console.log(`Skipped [api]: ${book.title} (unchanged)`);
-        continue;
-      }
-      const res = await importOneBookByApi(book, args.output, cookie, {
-        tags: args.tags,
-        detailFetchJson: browserFetcher?.fetchJson.bind(browserFetcher),
-      });
-      const prevBookmarkIds = Array.isArray(prev?.bookmarkIds) ? prev.bookmarkIds : [];
-      const prevReviewIds = Array.isArray(prev?.reviewIds) ? prev.reviewIds : [];
-      const addedBookmarkIds = res.bookmarkIds.filter((id) => !prevBookmarkIds.includes(id));
-      const addedReviewIds = res.reviewIds.filter((id) => !prevReviewIds.includes(id));
-      state.data.books[book.bookId] = {
-        title: book.title,
-        author: book.author || '',
-        fileName: path.basename(res.filePath),
-        lastNoteUpdate: currentStamp,
-        lastImportedAt: new Date().toISOString(),
-        bookmarkIds: res.bookmarkIds,
-        reviewIds: res.reviewIds,
-        bookmarkEntryMap: res.bookmarkEntryMap || {},
-        reviewEntryMap: res.reviewEntryMap || {},
-        bookmarkCount: res.bookmarkCount,
-        reviewCount: res.reviewCount,
-        lastDelta: { addedBookmarks: addedBookmarkIds.length, addedReviews: addedReviewIds.length },
-        lastMergeStats: res.mergeStats || null,
-        mode: 'api',
-      };
-      results.push(res);
-      const delta = state.data.books[book.bookId].lastDelta;
-      const mergeInfo = res.mergeStats ? `, merge(bookmarks a/u/r/d=${res.mergeStats.bookmarks.added}/${res.mergeStats.bookmarks.updated}/${res.mergeStats.bookmarks.retained}/${res.mergeStats.bookmarks.deleted}; reviews a/u/r/d=${res.mergeStats.reviews.added}/${res.mergeStats.reviews.updated}/${res.mergeStats.reviews.retained}/${res.mergeStats.reviews.deleted})` : '';
-      console.log(`Imported [api]: ${res.title} -> ${res.filePath} (${res.merged ? 'merged' : 'new'}, highlights=${res.bookmarkCount}, reviews=${res.reviewCount}, +bookmarks=${delta.addedBookmarks}, +reviews=${delta.addedReviews}${mergeInfo})`);
-    }
-    await saveState(state);
-    console.log(`Done. Imported ${results.length} book(s) by API. Skipped ${skipped} unchanged book(s).`);
-  } finally {
-    await browserFetcher?.close();
+async function importViaApi(args, session, sessionManager) {
+  const state = await loadState(args.output);
+  const books = await resolveBooksForImport(args, session.cookie);
+  sessionManager?.markBasicValidated();
+  if (books.length) {
+    await sessionManager?.ensureDetailReady(books[0].bookId);
   }
+  const results = [];
+  let skipped = 0;
+  for (const book of books) {
+    const prev = state.data.books?.[book.bookId];
+    const currentStamp = Number(book.sort || 0);
+    if (!args.force && prev && Number(prev.lastNoteUpdate || 0) >= currentStamp && prev.fileName) {
+      skipped += 1;
+      console.log(`Skipped [api]: ${book.title} (unchanged)`);
+      continue;
+    }
+    const res = await importOneBookByApi(book, args.output, session.cookie, {
+      tags: args.tags,
+      detailFetchJson: session.detailFetchJson,
+    });
+    const prevBookmarkIds = Array.isArray(prev?.bookmarkIds) ? prev.bookmarkIds : [];
+    const prevReviewIds = Array.isArray(prev?.reviewIds) ? prev.reviewIds : [];
+    const addedBookmarkIds = res.bookmarkIds.filter((id) => !prevBookmarkIds.includes(id));
+    const addedReviewIds = res.reviewIds.filter((id) => !prevReviewIds.includes(id));
+    state.data.books[book.bookId] = {
+      title: book.title,
+      author: book.author || '',
+      fileName: path.basename(res.filePath),
+      lastNoteUpdate: currentStamp,
+      lastImportedAt: new Date().toISOString(),
+      bookmarkIds: res.bookmarkIds,
+      reviewIds: res.reviewIds,
+      bookmarkEntryMap: res.bookmarkEntryMap || {},
+      reviewEntryMap: res.reviewEntryMap || {},
+      bookmarkCount: res.bookmarkCount,
+      reviewCount: res.reviewCount,
+      lastDelta: { addedBookmarks: addedBookmarkIds.length, addedReviews: addedReviewIds.length },
+      lastMergeStats: res.mergeStats || null,
+      mode: 'api',
+    };
+    results.push(res);
+    const delta = state.data.books[book.bookId].lastDelta;
+    const mergeInfo = res.mergeStats ? `, merge(bookmarks a/u/r/d=${res.mergeStats.bookmarks.added}/${res.mergeStats.bookmarks.updated}/${res.mergeStats.bookmarks.retained}/${res.mergeStats.bookmarks.deleted}; reviews a/u/r/d=${res.mergeStats.reviews.added}/${res.mergeStats.reviews.updated}/${res.mergeStats.reviews.retained}/${res.mergeStats.reviews.deleted})` : '';
+    console.log(`Imported [api]: ${res.title} -> ${res.filePath} (${res.merged ? 'merged' : 'new'}, highlights=${res.bookmarkCount}, reviews=${res.reviewCount}, +bookmarks=${delta.addedBookmarks}, +reviews=${delta.addedReviews}${mergeInfo})`);
+  }
+  await saveState(state);
+  console.log(`Done. Imported ${results.length} book(s) by API. Skipped ${skipped} unchanged book(s).`);
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  try {
-    return await importViaApi(args);
-  } catch (err) {
-    if (err instanceof WereadAuthError && args.cookieFrom === 'browser') {
-      console.warn('[warn] API cookie 已过期，正在从浏览器刷新...');
-      try {
-        args.cookie = await extractCookieFromBrowser(args.cdp);
-        return await importViaApi(args);
-      } catch (retryErr) {
-        if (retryErr instanceof WereadAuthError) {
-          throw new Error('浏览器中的微信读书登录已过期，请在 Chrome 中重新登录后重试');
-        }
-        throw retryErr;
-      }
-    }
-    if (err instanceof WereadAuthError) {
-      throw new Error('cookie 已过期，请更新 WEREAD_COOKIE 或使用 --cookie-from browser');
-    }
-    throw err;
-  }
+  return runWithApiSessionRetry(args, (session, sessionManager) => importViaApi(args, session, sessionManager));
 }
 
 main().catch((err) => {

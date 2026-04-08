@@ -2,6 +2,7 @@ export { WereadAuthError, WereadApiError } from './errors.mjs';
 export { sanitizeFileName, cleanText, yamlScalar } from './utils.mjs';
 export { wereadFetchJson, getNotebookBooks, getBookmarks, getReviews } from './api.mjs';
 export { extractCookieFromBrowser, getCookieForApi } from './cookie.mjs';
+export { createApiSessionManager, runWithApiSessionRetry } from './session.mjs';
 export { buildBookmarkEntries, buildReviewEntries, groupByChapter, collectBookmarkIds, collectReviewIds, comparableBookmarkEntry, comparableReviewEntry } from './entries.mjs';
 export { renderBookmarkSections, renderReviewSections, buildFrontmatter, buildMarkdownFromApi, writeBook } from './render.mjs';
 export { computeMergeStats, mergeDeletedContent, pickDeletedEntries, buildDeletedSection, normalizeDeletedContent } from './merge.mjs';
