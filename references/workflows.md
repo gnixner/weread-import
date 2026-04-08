@@ -21,18 +21,25 @@ node --test
 ```bash
 node --input-type=module -e "
 import { extractCookieFromBrowser } from './src/cookie.mjs';
-import { wereadFetchJson } from './src/api.mjs';
+import { createWereadBrowserFetcher, wereadFetchJson } from './src/api.mjs';
 const cookie = await extractCookieFromBrowser('http://127.0.0.1:9222');
 const notebook = await wereadFetchJson('https://weread.qq.com/api/user/notebook', cookie);
-const bookmark = await wereadFetchJson('https://weread.qq.com/web/book/bookmarklist?bookId=33628204', cookie);
-const review = await wereadFetchJson('https://weread.qq.com/web/review/list?bookId=33628204&listType=4&syncKey=0&mine=1', cookie);
+const fetcher = await createWereadBrowserFetcher('http://127.0.0.1:9222');
+const bookmark = await fetcher.fetchJson('https://weread.qq.com/web/book/bookmarklist?bookId=33628204');
+const review = await fetcher.fetchJson('https://weread.qq.com/web/review/list?bookId=33628204&listType=4&syncKey=0&mine=1');
 console.log({
   books: Array.isArray(notebook.books) ? notebook.books.length : null,
   bookmarkUpdated: Array.isArray(bookmark.updated) ? bookmark.updated.length : null,
   reviewCount: Array.isArray(review.reviews) ? review.reviews.length : null,
 });
+await fetcher.close();
 "
 ```
+
+说明：
+
+- `api/user/notebook` 这类接口可直接用 Node 请求 + cookie 验证
+- `bookmarklist`、`review/list` 这类书籍详情接口，在 `--cookie-from browser` 场景下应复用浏览器上下文验证
 
 ### 0.3 本地真机完整导出
 
@@ -50,28 +57,30 @@ OUT=$(mktemp -d /tmp/weread-verify.XXXXXX)
 bash ./scripts/run.sh --all --mode api --cookie-from browser --output "$OUT"
 ```
 
-### 0.4 OpenClaw 本地安装态验证
+### 0.4 本地 staging 安装态验证
 
-目的：确认 bot 实际运行的 skill 安装态和当前修复一致。
+目的：确认当前修复在“安装后的 skill 目录”里也可用，而不是只在 repo 工作树里可用。
 
 规则：
 
-- 在 OpenClaw 的 skill workspace 中执行
-- 命令尽量与 bot 实际执行命令保持一致
+- 先从当前 repo 生成一个隔离的 staging skill 目录
+- 在 staging 目录中执行，与真实运行命令尽量保持一致
 - 输出目录仍然使用 `/tmp/...`
+- 不要直接覆盖正在服役的正式 skill 安装目录
 
 示例：
 
 ```bash
-OUT=$(mktemp -d /tmp/weread-openclaw-verify.XXXXXX)
-bash "<openclaw-skill-workspace>/scripts/run.sh" \
+STAGING_DIR="$(bash ./scripts/prepare-staging-skill.sh)"
+OUT=$(mktemp -d /tmp/weread-staging-verify.XXXXXX)
+bash "$STAGING_DIR/scripts/run.sh" \
   --all \
   --mode api \
   --cookie-from browser \
   --output "$OUT"
 ```
 
-其中 `<openclaw-skill-workspace>` 表示 OpenClaw 当前安装的 `weread-import` skill 工作目录。
+如果你还需要验证某个具体 agent 平台的安装态，可以在 staging 验证通过后，再额外补一轮该平台的 smoke test；但默认发版门槛不依赖某一个特定 agent。
 
 ### 0.5 只有全部通过后才发版
 
@@ -80,7 +89,7 @@ bash "<openclaw-skill-workspace>/scripts/run.sh" \
 1. `node --test` 通过
 2. 本地真机 API 探针通过
 3. 本地真机完整导出通过
-4. OpenClaw 本地安装态验证通过
+4. 本地 staging 安装态验证通过
 
 只有这 4 项都通过，才允许：
 
@@ -160,7 +169,7 @@ bash ./scripts/run.sh --all --mode api --cookie-from browser --output "/path/to/
 1. 确认 Chrome 远程调试实例仍在运行
 2. 确认该实例中已登录微信读书
 3. 重新执行 `--cookie-from browser`
-4. 若仍失败，改用 `--cookie '...'` 手动传入
+4. 若仍失败，先按 `0.2` 的 API 探针区分是 cookie 问题、浏览器上下文问题，还是 CDP/环境问题
 
 ### 避免影响正式笔记
 

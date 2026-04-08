@@ -44,6 +44,12 @@ Supported cookie flows:
 3. Guided manual retrieval
    - documented cookie-copy steps
 
+Browser-backed detail syncing has one extra rule:
+
+- in `--cookie-from browser` mode, book detail APIs should reuse the browser context
+- `bookmarklist` / `review/list` are more reliable when fetched after entering the book reader context
+- validation should distinguish cookie validity from browser-context-specific failures
+
 ### Merge model
 
 The project tracks note state by `bookmarkId` / `reviewId` and classifies merge results as:
@@ -70,3 +76,4 @@ Markdown output is structured for both reading and machine-friendly diff / merge
 - no hardcoded personal vault paths in runtime behavior
 - deterministic output structure
 - user-facing docs for cookie retrieval, output selection, and common workflows
+- release validation should run in an isolated staging skill directory, not by overwriting a live agent installation

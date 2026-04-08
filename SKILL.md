@@ -73,16 +73,16 @@ bash ./scripts/run.sh --all --mode api --cookie-from browser --output "/path/to/
 
 - exit code 0 = 成功，直接报告结果。
 - exit code 非 0 = 失败，将完整错误输出报告给用户，不做任何额外操作。
-- 鉴权失败说明浏览器中的微信读书登录已过期，告知用户需要重新登录，仅此而已。
+- 鉴权失败时，不要立刻断言用户已退出登录。先按 `references/workflows.md` 的验证流程区分登录态、CDP 环境和浏览器上下文问题。
 
 ## 运行须知
 
 - `run.sh` 会自动检测并启动 Chrome CDP，无需手动启动浏览器。
 - Chrome 146+ 要求非默认 `--user-data-dir` 才能开启远程调试，`open-chrome-debug.sh` 会自动处理。
 - 首次使用 `open-chrome-debug.sh` 时会从默认 Chrome Profile 同步登录态，也可通过 `SYNC_PROFILE=1` 强制重新同步。
-- 浏览器 cookie 提取使用 `disconnect()` 而非 `close()`，不会关闭用户的 Chrome。
+- 浏览器 cookie / 浏览器上下文请求在 CDP 会话结束后会正确关闭 Playwright 连接，不会关闭用户自己的 Chrome。
 - API 请求自动附加时间戳防缓存，减少因 CDN 缓存导致的鉴权失败。
-- API 鉴权失败会自动从浏览器刷新 cookie 重试；无浏览器时直接报错。
+- API 鉴权失败会自动从浏览器刷新 cookie 重试；`--cookie-from browser` 下的书籍详情接口会复用浏览器上下文。
 - 合并统计支持新增 / 更新 / 保留 / 删除四种分类。
 - 被删除的条目会归档到 `## 已删除`，而非直接丢弃。
 - 元信息由 YAML frontmatter 承载，正文中不重复。
@@ -108,6 +108,7 @@ bash ./scripts/run.sh --all --mode api --cookie-from browser --output "/path/to/
 ### scripts/
 - `scripts/run.sh`：Skill 执行入口（首次自动安装依赖，自动启动 Chrome CDP）
 - `scripts/open-chrome-debug.sh`：启动 Chrome 远程调试（自动同步默认 Profile 登录态）
+- `scripts/prepare-staging-skill.sh`：生成隔离的 staging skill 目录，供发版前安装态验证使用
 
 ### references/
 - `references/workflows.md`：推荐工作流、验证流程与常见问题处理

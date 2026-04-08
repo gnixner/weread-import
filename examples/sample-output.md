@@ -20,12 +20,16 @@ tags:
 <!-- bookmarkId: demo-bookmark-1 -->
 <!-- time: 2026-03-17T13:00:00.000Z -->
 <!-- chapterUid: 1 -->
+<!-- chapterIdx: 1 -->
+<!-- range: 120-168 -->
 
 > 这是第一条划线示例。
 
 <!-- bookmarkId: demo-bookmark-2 -->
 <!-- time: 2026-03-17T13:05:00.000Z -->
 <!-- chapterUid: 1 -->
+<!-- chapterIdx: 1 -->
+<!-- range: 240-286 -->
 
 > 这是第二条划线示例。
 
@@ -36,6 +40,8 @@ tags:
 <!-- reviewId: demo-review-1 -->
 <!-- time: 2026-03-17T13:10:00.000Z -->
 <!-- chapterUid: 1 -->
+<!-- chapterIdx: 1 -->
+<!-- range: 240-286 -->
 
 > **摘录**：这是一条带摘录的想法示例。
 >
@@ -50,6 +56,8 @@ tags:
 <!-- bookmarkId: demo-deleted-bookmark-1 -->
 <!-- time: 2026-03-17T12:00:00.000Z -->
 <!-- chapterUid: 0 -->
+<!-- chapterIdx: 0 -->
+<!-- range: 1-24 -->
 
 > 这是一条已删除划线示例。
 
@@ -60,6 +68,8 @@ tags:
 <!-- reviewId: demo-deleted-review-1 -->
 <!-- time: 2026-03-17T12:10:00.000Z -->
 <!-- chapterUid: 0 -->
+<!-- chapterIdx: 0 -->
+<!-- range: 30-45 -->
 
 > **摘录**：这是一条已删除想法的摘录示例。
 >

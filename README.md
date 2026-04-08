@@ -175,6 +175,7 @@ src/
 scripts/
   run.sh               ← Skill 入口（首次自动安装依赖）
   open-chrome-debug.sh ← 启动 Chrome 远程调试
+  prepare-staging-skill.sh ← 生成隔离的 staging skill 目录
 tests/                 ← 单元测试（node:test）
 references/
   workflows.md         ← 常用工作流参考
@@ -197,7 +198,7 @@ npm test
 1. 本地开发
 2. 自动测试
 3. 本地真机验证
-4. OpenClaw 本地安装态验证
+4. 本地 staging 安装态验证
 5. 提交 / 打 tag / 发 release
 
 ### 1. 自动测试
@@ -217,16 +218,28 @@ node --test
 - 验证阶段一律输出到 `/tmp/...`
 - 不要直接写正式 Reading 目录
 - 至少覆盖 API 探针和一次完整导出
+- 若验证 `--cookie-from browser` 路径，书籍详情接口应按浏览器上下文链路验证，而不是只测手动 cookie 的 Node 请求
 
-### 3. OpenClaw 本地安装态验证
+### 3. 本地 staging 安装态验证
 
-目的：确认 bot 实际运行的 skill 安装态与当前修复一致，而不是只在 repo 内可用。
+目的：确认当前修复在“安装后的 skill 目录”里也可用，而不是只在 repo 工作树里可用。
 
 规则：
 
-- 先让 OpenClaw 更新到本地最新 skill
-- 在 skill workspace 里复现 bot 实际会执行的命令
+- 先从当前 repo 生成一个隔离的临时 staging skill 目录
+- 在这个 staging 目录里复现真实运行命令
 - 输出目录仍然使用 `/tmp/...`
+- 不要直接覆盖正在服役的 skill 安装目录
+
+推荐做法：
+
+```bash
+STAGING_DIR="$(bash ./scripts/prepare-staging-skill.sh)"
+OUT="$(mktemp -d /tmp/weread-staging-verify.XXXXXX)"
+bash "$STAGING_DIR/scripts/run.sh" --all --mode api --cookie-from browser --output "$OUT"
+```
+
+如果你在某个 agent 平台里还有真实安装态，也可以在 staging 验证通过后再补一轮平台内 smoke test；但发版门槛默认只要求隔离的 staging 安装态验证通过。
 
 ### 4. 发版门槛
 
@@ -234,6 +247,6 @@ node --test
 
 - `node --test` 通过
 - 本地真机验证通过
-- OpenClaw 本地安装态验证通过
+- 本地 staging 安装态验证通过
 
 如果上述任一项失败，不要发 GitHub release，不要上传 ClawHub。
