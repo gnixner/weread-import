@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCookieHeader, cookieMatchesHost } from '../src/cookie.mjs';
+import { buildCookieHeader, cookieMatchesHost, extractCookieFromBrowserWithConnector } from '../src/cookie.mjs';
 
 describe('cookieMatchesHost', () => {
   it('matches host-only and parent-domain cookies for weread.qq.com', () => {
@@ -20,5 +20,49 @@ describe('buildCookieHeader', () => {
       { name: 'other', value: 'd', domain: '.example.com' },
     ]);
     assert.equal(header, 'wr_skey=a; wr_gid=b; _clck=c');
+  });
+});
+
+describe('extractCookieFromBrowserWithConnector', () => {
+  it('closes the browser after extracting cookies', async () => {
+    const calls = [];
+    const browser = {
+      contexts() {
+        calls.push('contexts');
+        return [{
+          async cookies() {
+            calls.push('cookies');
+            return [{ name: 'wr_gid', value: 'v', domain: 'weread.qq.com' }];
+          },
+        }];
+      },
+      async close() {
+        calls.push('close');
+      },
+    };
+
+    const header = await extractCookieFromBrowserWithConnector('http://127.0.0.1:9222', async (cdpUrl) => {
+      calls.push(`connect:${cdpUrl}`);
+      return browser;
+    });
+
+    assert.equal(header, 'wr_gid=v');
+    assert.deepEqual(calls, ['connect:http://127.0.0.1:9222', 'contexts', 'cookies', 'close']);
+  });
+
+  it('preserves the primary error when browser cleanup also fails', async () => {
+    const browser = {
+      contexts() {
+        return [];
+      },
+      async close() {
+        throw new Error('cleanup failed');
+      },
+    };
+
+    await assert.rejects(
+      extractCookieFromBrowserWithConnector('http://127.0.0.1:9222', async () => browser),
+      /无可用浏览器上下文/,
+    );
   });
 });

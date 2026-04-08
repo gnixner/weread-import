@@ -12,19 +12,34 @@ export function buildCookieHeader(cookies, host = 'weread.qq.com') {
     .join('; ');
 }
 
-export async function extractCookieFromBrowser(cdpUrl) {
-  const browser = await chromium.connectOverCDP(cdpUrl);
+async function closeBrowser(browser, primaryError) {
+  if (!browser || typeof browser.close !== 'function') return;
+  try {
+    await browser.close();
+  } catch (closeError) {
+    if (!primaryError) throw closeError;
+  }
+}
+
+export async function extractCookieFromBrowserWithConnector(cdpUrl, connectOverCDP = chromium.connectOverCDP.bind(chromium)) {
+  const browser = await connectOverCDP(cdpUrl);
+  let primaryError = null;
   try {
     const context = browser.contexts()[0];
     if (!context) throw new Error('无可用浏览器上下文，请确认已启动带远程调试的 Chrome');
     const cookieHeader = buildCookieHeader(await context.cookies());
     if (!cookieHeader) throw new Error('浏览器中未找到 weread.qq.com 的 cookie，请先在该浏览器中登录微信读书');
     return cookieHeader;
+  } catch (error) {
+    primaryError = error;
+    throw error;
   } finally {
-    if (typeof browser.disconnect === 'function') {
-      browser.disconnect();
-    }
+    await closeBrowser(browser, primaryError);
   }
+}
+
+export async function extractCookieFromBrowser(cdpUrl) {
+  return extractCookieFromBrowserWithConnector(cdpUrl);
 }
 
 export async function getCookieForApi(args) {
