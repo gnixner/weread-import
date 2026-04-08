@@ -5,9 +5,21 @@ export function cookieMatchesHost(cookie, host = 'weread.qq.com') {
   return Boolean(domain) && (host === domain || host.endsWith(`.${domain}`));
 }
 
+export function cookieLooksRelevantToWeRead(cookie) {
+  const domain = String(cookie?.domain || '').replace(/^\./, '').toLowerCase();
+  const name = String(cookie?.name || '').toLowerCase();
+  if (!domain || !name) return false;
+  return (
+    domain.includes('weread') ||
+    domain.endsWith('qq.com') ||
+    domain.endsWith('wechat.com') ||
+    name.startsWith('wr_')
+  );
+}
+
 export function buildCookieHeader(cookies, host = 'weread.qq.com') {
   return (cookies || [])
-    .filter((cookie) => cookieMatchesHost(cookie, host) && cookie.name && cookie.value)
+    .filter((cookie) => (cookieMatchesHost(cookie, host) || cookieLooksRelevantToWeRead(cookie)) && cookie.name && cookie.value)
     .map((cookie) => `${cookie.name}=${cookie.value}`)
     .join('; ');
 }

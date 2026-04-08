@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCookieHeader, cookieMatchesHost, extractCookieFromBrowserWithConnector } from '../src/cookie.mjs';
+import { buildCookieHeader, cookieLooksRelevantToWeRead, cookieMatchesHost, extractCookieFromBrowserWithConnector } from '../src/cookie.mjs';
 
 describe('cookieMatchesHost', () => {
   it('matches host-only and parent-domain cookies for weread.qq.com', () => {
@@ -20,6 +20,25 @@ describe('buildCookieHeader', () => {
       { name: 'other', value: 'd', domain: '.example.com' },
     ]);
     assert.equal(header, 'wr_skey=a; wr_gid=b; _clck=c');
+  });
+
+  it('keeps Tencent login cookies that do not directly match weread.qq.com', () => {
+    const header = buildCookieHeader([
+      { name: 'wr_skey', value: 'a', domain: '.weread.qq.com' },
+      { name: 'wxuin', value: 'b', domain: '.qq.com' },
+      { name: 'appuser', value: 'c', domain: '.wechat.com' },
+      { name: 'sid', value: 'd', domain: '.example.com' },
+    ]);
+    assert.equal(header, 'wr_skey=a; wxuin=b; appuser=c');
+  });
+});
+
+describe('cookieLooksRelevantToWeRead', () => {
+  it('accepts weread and tencent-auth cookies, rejects unrelated domains', () => {
+    assert.equal(cookieLooksRelevantToWeRead({ name: 'wr_gid', domain: 'weread.qq.com' }), true);
+    assert.equal(cookieLooksRelevantToWeRead({ name: 'wxuin', domain: '.qq.com' }), true);
+    assert.equal(cookieLooksRelevantToWeRead({ name: 'appuser', domain: '.wechat.com' }), true);
+    assert.equal(cookieLooksRelevantToWeRead({ name: 'foo', domain: '.example.com' }), false);
   });
 });
 
