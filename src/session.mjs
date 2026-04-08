@@ -4,6 +4,14 @@ import { WereadAuthError } from './errors.mjs';
 
 const WEREAD_BASE = 'https://weread.qq.com';
 
+function browserAuthFailureMessage() {
+  const isolatedMode = (process.env.WEREAD_PROFILE_SYNC_MODE || 'isolated') === 'isolated';
+  if (isolatedMode) {
+    return '隔离浏览器窗口中的微信读书尚未登录或登录已过期。请在自动打开的独立 Chrome 窗口中登录微信读书后再重试。';
+  }
+  return '浏览器中的微信读书登录已过期，请在 Chrome 中重新登录后重试';
+}
+
 export async function createApiSessionManager(args, deps = {}) {
   const getCookie = deps.getCookieForApi || getCookieForApi;
   const refreshCookie = deps.extractCookieFromBrowser || extractCookieFromBrowser;
@@ -132,7 +140,7 @@ export async function runWithApiSessionRetry(args, run, deps = {}) {
         return await run(refreshedSession, sessionManager);
       } catch (retryErr) {
         if (retryErr instanceof WereadAuthError) {
-          throw new Error('浏览器中的微信读书登录已过期，请在 Chrome 中重新登录后重试');
+          throw new Error(browserAuthFailureMessage());
         }
         throw retryErr;
       }

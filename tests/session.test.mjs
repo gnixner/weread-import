@@ -200,30 +200,71 @@ describe('runWithApiSessionRetry', () => {
   });
 
   it('converts repeated browser auth failures into a user-facing login message', async () => {
-    await assert.rejects(
-      runWithApiSessionRetry(
-        { cookieFrom: 'browser', cdp: 'http://127.0.0.1:9222' },
-        async () => {
-          throw new WereadAuthError('expired');
-        },
-        {
-          warn() {},
-          async getCookieForApi() {
-            return 'cookie-1';
+    const previousMode = process.env.WEREAD_PROFILE_SYNC_MODE;
+    process.env.WEREAD_PROFILE_SYNC_MODE = 'isolated';
+    try {
+      await assert.rejects(
+        runWithApiSessionRetry(
+          { cookieFrom: 'browser', cdp: 'http://127.0.0.1:9222' },
+          async () => {
+            throw new WereadAuthError('expired');
           },
-          async extractCookieFromBrowser() {
-            throw new WereadAuthError('expired-again');
+          {
+            warn() {},
+            async getCookieForApi() {
+              return 'cookie-1';
+            },
+            async extractCookieFromBrowser() {
+              throw new WereadAuthError('expired-again');
+            },
+            async createWereadBrowserFetcher() {
+              return {
+                fetchJson() {},
+                async close() {},
+              };
+            },
           },
-          async createWereadBrowserFetcher() {
-            return {
-              fetchJson() {},
-              async close() {},
-            };
+        ),
+        /隔离浏览器窗口中的微信读书尚未登录或登录已过期/,
+      );
+    } finally {
+      if (previousMode === undefined) delete process.env.WEREAD_PROFILE_SYNC_MODE;
+      else process.env.WEREAD_PROFILE_SYNC_MODE = previousMode;
+    }
+  });
+
+  it('preserves the legacy browser-auth message in legacy sync mode', async () => {
+    const previousMode = process.env.WEREAD_PROFILE_SYNC_MODE;
+    process.env.WEREAD_PROFILE_SYNC_MODE = 'legacy';
+    try {
+      await assert.rejects(
+        runWithApiSessionRetry(
+          { cookieFrom: 'browser', cdp: 'http://127.0.0.1:9222' },
+          async () => {
+            throw new WereadAuthError('expired');
           },
-        },
-      ),
-      /浏览器中的微信读书登录已过期/,
-    );
+          {
+            warn() {},
+            async getCookieForApi() {
+              return 'cookie-1';
+            },
+            async extractCookieFromBrowser() {
+              throw new WereadAuthError('expired-again');
+            },
+            async createWereadBrowserFetcher() {
+              return {
+                fetchJson() {},
+                async close() {},
+              };
+            },
+          },
+        ),
+        /浏览器中的微信读书登录已过期/,
+      );
+    } finally {
+      if (previousMode === undefined) delete process.env.WEREAD_PROFILE_SYNC_MODE;
+      else process.env.WEREAD_PROFILE_SYNC_MODE = previousMode;
+    }
   });
 
   it('converts manual auth failures into a cookie-expired message', async () => {

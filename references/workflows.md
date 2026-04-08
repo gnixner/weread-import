@@ -157,6 +157,9 @@ bash ./scripts/run.sh --all --mode api --cookie-from browser --output "/path/to/
 - 不加 `--force`，依赖增量机制跳过无变化的书籍
 - 必须使用 `--cookie-from browser`，不要硬编码 cookie
 - 前提是 Chrome CDP 运行中且已登录微信读书
+- 默认受管浏览器使用隔离 profile，不会同步默认 Chrome 的整份登录态
+- 默认隔离 profile 目录为 `~/.weread-import-profile-isolated`
+- 如需保留旧的 profile 同步行为，显式设置 `WEREAD_PROFILE_SYNC_MODE=legacy`
 - 失败时直接报告错误，不要重试或变更参数
 
 ## 6. 常见问题

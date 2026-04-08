@@ -29,7 +29,38 @@ async function makeFakeCurl(root, body = '#!/usr/bin/env bash\nexit 0\n') {
 }
 
 describe('open-chrome-debug.sh', () => {
-  it('syncs newer profile files before launching managed Chrome', async () => {
+  it('launches an isolated managed Chrome profile without syncing default login data by default', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'weread-open-chrome-'));
+    const source = path.join(root, 'source');
+    const profile = path.join(root, 'profile');
+    const logPath = path.join(root, 'chrome.log');
+    const fakeChrome = await makeFakeChrome(root);
+
+    await writeFile(path.join(source, 'Default/Cookies'), 'source-cookie');
+    await writeFile(path.join(source, 'Default/Login Data For Account'), 'source-account');
+    await writeFile(path.join(source, 'Default/Preferences'), 'source-preferences');
+    await writeFile(path.join(source, 'Local State'), 'source-local-state');
+
+    await execFileAsync('bash', [scriptPath, '9333'], {
+      env: {
+        ...process.env,
+        WEREAD_CHROME_BIN: fakeChrome,
+        WEREAD_CHROME_DEFAULT: source,
+        WEREAD_PROFILE_DIR: profile,
+        FAKE_CHROME_LOG: logPath,
+      },
+    });
+
+    await assert.rejects(fs.readFile(path.join(profile, 'Default/Cookies'), 'utf8'));
+    await assert.rejects(fs.readFile(path.join(profile, 'Default/Login Data For Account'), 'utf8'));
+
+    const log = await fs.readFile(logPath, 'utf8');
+    assert.match(log, /--remote-debugging-port=9333/);
+    assert.match(log, /https:\/\/weread\.qq\.com\//);
+    assert.match(log, new RegExp(`--user-data-dir=${profile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  });
+
+  it('syncs newer profile files only when legacy sync mode is enabled', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'weread-open-chrome-'));
     const source = path.join(root, 'source');
     const profile = path.join(root, 'profile');
@@ -61,12 +92,13 @@ describe('open-chrome-debug.sh', () => {
     await fs.utimes(path.join(source, 'Default/Secure Preferences'), newer, newer);
     await fs.utimes(path.join(source, 'Local State'), newer, newer);
 
-    await execFileAsync('bash', [scriptPath, '9333'], {
+    await execFileAsync('bash', [scriptPath, '9334'], {
       env: {
         ...process.env,
         WEREAD_CHROME_BIN: fakeChrome,
         WEREAD_CHROME_DEFAULT: source,
         WEREAD_PROFILE_DIR: profile,
+        WEREAD_PROFILE_SYNC_MODE: 'legacy',
         FAKE_CHROME_LOG: logPath,
       },
     });
@@ -76,7 +108,7 @@ describe('open-chrome-debug.sh', () => {
     assert.equal(await fs.readFile(path.join(profile, 'Local State'), 'utf8'), 'source-local-state');
 
     const log = await fs.readFile(logPath, 'utf8');
-    assert.match(log, /--remote-debugging-port=9333/);
+    assert.match(log, /--remote-debugging-port=9334/);
     assert.match(log, new RegExp(`--user-data-dir=${profile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
   });
 

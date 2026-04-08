@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCookieHeader, cookieMatchesHost, extractCookieFromBrowserWithConnector } from '../src/cookie.mjs';
+import { buildCookieHeader, cookieMatchesHost, extractCookieFromBrowserWithConnector, normalizeBrowserCookieError } from '../src/cookie.mjs';
 
 describe('cookieMatchesHost', () => {
   it('matches host-only and parent-domain cookies for weread.qq.com', () => {
@@ -78,5 +78,18 @@ describe('extractCookieFromBrowserWithConnector', () => {
       extractCookieFromBrowserWithConnector('http://127.0.0.1:9222', async () => browser),
       /无可用浏览器上下文/,
     );
+  });
+});
+
+describe('normalizeBrowserCookieError', () => {
+  it('explains the first-login requirement in isolated browser mode', () => {
+    const error = normalizeBrowserCookieError(new Error('浏览器中未找到 weread.qq.com 的 cookie，请先在该浏览器中登录微信读书'), 'isolated');
+    assert.match(error.message, /隔离浏览器中尚未登录微信读书/);
+  });
+
+  it('preserves the original error outside isolated mode', () => {
+    const original = new Error('浏览器中未找到 weread.qq.com 的 cookie，请先在该浏览器中登录微信读书');
+    const error = normalizeBrowserCookieError(original, 'legacy');
+    assert.equal(error, original);
   });
 });
