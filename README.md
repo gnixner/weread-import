@@ -187,3 +187,53 @@ TEMPLATE.md            ← 输出模板参考
 ```bash
 npm test
 ```
+
+## 开发与发版流程
+
+发版前不要把 GitHub release / ClawHub / OpenClaw bot 当成验证环境。
+
+推荐顺序：
+
+1. 本地开发
+2. 自动测试
+3. 本地真机验证
+4. OpenClaw 本地安装态验证
+5. 提交 / 打 tag / 发 release
+
+### 1. 自动测试
+
+至少执行：
+
+```bash
+node --test
+```
+
+### 2. 本地真机验证
+
+目的：确认当前 repo 代码在真实 Chrome CDP 和真实微信读书会话下可用。
+
+规则：
+
+- 验证阶段一律输出到 `/tmp/...`
+- 不要直接写正式 Reading 目录
+- 至少覆盖 API 探针和一次完整导出
+
+### 3. OpenClaw 本地安装态验证
+
+目的：确认 bot 实际运行的 skill 安装态与当前修复一致，而不是只在 repo 内可用。
+
+规则：
+
+- 先让 OpenClaw 更新到本地最新 skill
+- 在 skill workspace 里复现 bot 实际会执行的命令
+- 输出目录仍然使用 `/tmp/...`
+
+### 4. 发版门槛
+
+只有同时满足以下条件，才允许发版：
+
+- `node --test` 通过
+- 本地真机验证通过
+- OpenClaw 本地安装态验证通过
+
+如果上述任一项失败，不要发 GitHub release，不要上传 ClawHub。
