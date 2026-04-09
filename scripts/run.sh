@@ -23,6 +23,10 @@ fi
 CDP_PORT="${WEREAD_CDP_PORT:-9222}"
 if [ "$COOKIE_FROM" = "browser-managed" ]; then
   echo "正在校验 Chrome CDP..." >&2
+  MANAGED_COLD_START=1
+  if curl -s "http://127.0.0.1:$CDP_PORT/json/version" > /dev/null 2>&1; then
+    MANAGED_COLD_START=0
+  fi
   nohup bash "$SCRIPT_DIR/open-chrome-debug.sh" "$CDP_PORT" > /dev/null 2>&1 </dev/null &
   for i in $(seq 1 10); do
     sleep 1
@@ -34,6 +38,11 @@ if [ "$COOKIE_FROM" = "browser-managed" ]; then
       echo "Chrome CDP 启动超时，将仅使用 API 模式。" >&2
     fi
   done
+  if [ "$MANAGED_COLD_START" -eq 1 ]; then
+    node "$SCRIPT_DIR/wait-browser-managed-ready.mjs" \
+      --cdp "http://127.0.0.1:$CDP_PORT" \
+      --timeout-ms "${WEREAD_BROWSER_READY_TIMEOUT_MS:-8000}"
+  fi
 elif [ "$COOKIE_FROM" = "browser-live" ]; then
   echo "正在校验外部 Chrome CDP..." >&2
   for i in $(seq 1 10); do

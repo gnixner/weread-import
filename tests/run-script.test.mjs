@@ -23,10 +23,22 @@ describe('run.sh', () => {
     const logPath = path.join(root, 'run.log');
     const nodeLogPath = path.join(root, 'node.log');
     const nohupLogPath = path.join(root, 'nohup.log');
+    const curlCountPath = path.join(root, 'curl-count');
     const runScriptPath = path.join(stagingScriptsDir, 'run.sh');
     const managedScriptPath = path.join(stagingScriptsDir, 'open-chrome-debug.sh');
 
-    await writeExecutable(path.join(binDir, 'curl'), '#!/usr/bin/env bash\nexit 0\n');
+    await writeExecutable(path.join(binDir, 'curl'), `#!/usr/bin/env bash
+count=0
+if [ -f "${curlCountPath}" ]; then
+  count=$(cat "${curlCountPath}")
+fi
+count=$((count + 1))
+printf "%s" "$count" > "${curlCountPath}"
+if [ "$count" -ge 2 ]; then
+  exit 0
+fi
+exit 1
+`);
     await writeExecutable(path.join(binDir, 'node'), `#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "${nodeLogPath}"\n`);
     await writeExecutable(path.join(binDir, 'nohup'), `#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "${nohupLogPath}"\nexec "$@"\n`);
     await fs.mkdir(stagingScriptsDir, { recursive: true });
@@ -47,6 +59,37 @@ describe('run.sh', () => {
     const managedLog = await fs.readFile(logPath, 'utf8');
     assert.match(managedLog, /managed:9222/);
     const nodeArgs = await fs.readFile(nodeLogPath, 'utf8');
+    assert.match(nodeArgs, /wait-browser-managed-ready\.mjs --cdp http:\/\/127\.0\.0\.1:9222 --timeout-ms 8000/);
+    assert.match(nodeArgs, /--cookie-from browser-managed/);
+  });
+
+  it('skips the managed browser readiness probe when CDP is already warm', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'weread-run-script-'));
+    const binDir = path.join(root, 'bin');
+    const stagingScriptsDir = path.join(root, 'scripts');
+    const logPath = path.join(root, 'run.log');
+    const nodeLogPath = path.join(root, 'node.log');
+    const nohupLogPath = path.join(root, 'nohup.log');
+    const runScriptPath = path.join(stagingScriptsDir, 'run.sh');
+    const managedScriptPath = path.join(stagingScriptsDir, 'open-chrome-debug.sh');
+
+    await writeExecutable(path.join(binDir, 'curl'), '#!/usr/bin/env bash\nexit 0\n');
+    await writeExecutable(path.join(binDir, 'node'), `#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "${nodeLogPath}"\n`);
+    await writeExecutable(path.join(binDir, 'nohup'), `#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "${nohupLogPath}"\nexec "$@"\n`);
+    await fs.mkdir(stagingScriptsDir, { recursive: true });
+    await fs.copyFile(scriptPath, runScriptPath);
+    await writeExecutable(managedScriptPath, `#!/usr/bin/env bash\nprintf "managed:%s\\n" "$1" >> "${logPath}"\n`);
+
+    await execFileAsync('bash', [runScriptPath, '--book-id', '33628204', '--mode', 'api', '--cookie-from', 'browser-managed'], {
+      cwd: path.resolve('.'),
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+      },
+    });
+
+    const nodeArgs = await fs.readFile(nodeLogPath, 'utf8');
+    assert.doesNotMatch(nodeArgs, /wait-browser-managed-ready\.mjs/);
     assert.match(nodeArgs, /--cookie-from browser-managed/);
   });
 
